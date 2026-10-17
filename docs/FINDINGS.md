@@ -223,6 +223,53 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   light off the battery recharges by 2 per vblank up to 1200
   (`0x800367B4(x, step, lo, hi)` = clamp(x + step × vblanks, lo, hi)).
 
+## Damage and messages (gameplay)
+
+* Object type: `obj+0x142`; the table at `0x8009905C` gives each type's
+  character name: 0–8 playable characters (twice), 9–17 marines and crew
+  (`WREN`, `GEDIMAN`, `PEREZ`, `VRIESS`), 18 egg, 19 facehugger, 20
+  chestburster, 21–22 alien warriors (`ALIEN1`, `ALIEN2`), 23 newborn,
+  24–25 queen (`SQUEEN`, `QUEEN`), 26–32 clones, 33 sentry tank, 34 egg sac,
+  35–39 marines. Larger values are level objects. The levels' `CVD` chunks
+  load character sets: `ALIEN1` and `MARINES` everywhere, `SQUEEN` in level
+  5, `NEWBORN` in levels 11–12.
+* Health: `obj+0x148` (s16, 4096 = full for the player; 32767 =
+  invulnerable); `obj+0x14A` accumulates damage taken.
+* `0x800519D0(obj, amount, kind)` applies all damage and returns the new
+  health. Kind 2 is acid (adds a splash effect at the victim). For the
+  player: amounts ≥ 65 play a pain sound; the amount is multiplied by the
+  difficulty factor from `0x800A7A44 + 4 × difficulty` (options `+4`: Easy
+  4096, Normal 4915, Hard 6144, Deadly 8192, i.e. ×1.0/1.2/1.5/2.0, rounded),
+  or set to 0 when options `+0x20` (the cheat menu's INFINITE HEALTH) is
+  set — the attract demos set it (`0x80058D2C`) and clear it afterwards. The
+  neighbouring option bytes are probably the other cheat items in menu
+  order (inferred). It then calls `0x8005138C`, which on Easy uses a
+  medikit automatically once health is ≤ 1024.
+* Messages: a pool at `0x8011ADD0`; layout `+0x0A` sender's object type,
+  `+0x0C/0E/10` position, `+0x14` parameter (damage for hits), `+0x18`,
+  `+0x20` attack/weapon id, `+0x24` code, `+0x2C` sender object.
+  `0x8004D9B0` builds a complete message, `0x8004D8A4(target, msg)` and the
+  short form `0x8004D7F8(target, code, p14, p18)` (sender fields not set;
+  never used for damage) post one, and `0x8004DEA8(target, msg)` delivers
+  it (queued on `target+0xC0`, some codes handled at once). Scripts send
+  messages too (`0x8004656C`, fields read from the script, sender = the
+  running object `[0x800A882C]`).
+* The player handles its queue in `0x80060BEC` (from the player update):
+  codes 1, 2, 5, 6, 11, 15, 16, 19 and 402 (explosion:
+  `0x800502D0(obj, pos, damage)`) itself, the rest through the generic
+  handler `0x8004E258(obj, msg)`, where code 4 is a hit (damage `+0x14`,
+  kind 0), 7 kind 1 and 8 acid (kind 2).
+* Melee attack `0x8006FB9C(attacker, target, attack)`: range checks, then a
+  code-4 message with damage 4096 / `attack+2` (hits to kill a full-health
+  player before the difficulty factor; alien warriors use 5, i.e. 819).
+  Attack data comes from the characters' data files, not the executable.
+* Other damage to the player: acid particles (`0x800152C4`, every fourth
+  frame within 32 units: 102 to Ripley, 204 to other characters, kind 2),
+  fall damage (`0x8005F9CC`, `0x80061390`, amount from `0x8003D8E4`) and
+  `0x8001C5B4(obj, delta)`, which adds to `obj+0x15A` (clamped to ±5119)
+  and at −5119 takes the player's health 1 at a time — probably drowning
+  (inferred, not observed).
+
 ## Memory card and options
 
 * Save files are `bu00:BASLUS-00633A` + a 7-character suffix, 2 blocks

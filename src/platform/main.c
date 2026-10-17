@@ -40,6 +40,7 @@ static struct {
     const char *exe;
     struct { long frame; char path[512]; bool vram; } shots[64];
     int nshots;
+    struct { long start, count, step; char prefix[512]; } record;
     struct { long frame; char path[512]; } dumps[16];
     int ndumps;
     struct { long frame; uint32_t addr, value; int size; } pokes[32];
@@ -438,6 +439,19 @@ static void apply_live(void) {
         g_infinite_flashlight = c->infinite_flashlight;
         LOGI("overlay", "infinite flashlight %s", c->infinite_flashlight ? "on" : "off");
     }
+    if (c->enemy_damage_pct != a->enemy_damage_pct ||
+        memcmp(c->enemy_damage_group_pct, a->enemy_damage_group_pct,
+               sizeof c->enemy_damage_group_pct)) {
+        g_enemy_damage_pct = c->enemy_damage_pct;
+        memcpy(g_enemy_damage_group_pct, c->enemy_damage_group_pct,
+               sizeof g_enemy_damage_group_pct);
+        char buf[256];
+        int n = snprintf(buf, sizeof buf, "all %d%%", c->enemy_damage_pct);
+        for (int g = 0; g < DMG_GROUP_COUNT && n < (int)sizeof buf; g++)
+            n += snprintf(buf + n, sizeof buf - (size_t)n, ", %s %d%%", g_enemy_groups[g].id,
+                          c->enemy_damage_group_pct[g]);
+        LOGI("overlay", "enemy damage: %s", buf);
+    }
     if (c->cpu_pct != a->cpu_pct) {
         g_cycle_scale = cycle_scale_for(c->cpu_pct);
         LOGI("overlay", "emulated CPU speed %d%%", c->cpu_pct);
@@ -689,6 +703,14 @@ void platform_vblank(void) {
     for (int i = 0; i < opt.nshots; i++)
         if (opt.shots[i].frame == g_frame)
             write_shot(opt.shots[i].path, opt.shots[i].vram);
+    if (opt.record.count && g_frame >= opt.record.start &&
+        (g_frame - opt.record.start) % opt.record.step == 0 &&
+        (g_frame - opt.record.start) / opt.record.step < opt.record.count) {
+        char path[600];
+        snprintf(path, sizeof path, "%s_%04ld.png", opt.record.prefix,
+                 (g_frame - opt.record.start) / opt.record.step);
+        write_shot(path, false);
+    }
     for (int i = 0; i < opt.ndumps; i++)
         if (opt.dumps[i].frame == g_frame) {
             FILE *f = fopen(opt.dumps[i].path, "wb");
@@ -857,8 +879,10 @@ static void parse_args(int argc, char **argv) {
                    "  --show-fps      show the game's frame rate in the window title\n"
                    "  --no-pgxp       original integer geometry and affine textures\n"
                    "  --cpu-speed PCT emulated CPU speed in percent (default 300; 100 = original)\n"
-                   "  --sprint-speed PCT  movement speed while Shift is held (default 175; 100 = off)\n"
+                   "  --sprint-speed PCT  movement speed while Shift is held (default 190; 100 = off)\n"
                    "  --no-infinite-flashlight  the flashlight battery runs down as in the original\n"
+                   "  --enemy-damage PCT|GROUP=PCT  damage taken from enemies (default 100;\n"
+                   "                  groups as in config.ini [enemy_damage]; repeatable)\n"
                    "  --mouse-sens N  mouse-look sensitivity (default 6)\n"
                    "  --save-dir DIR  folder for the memory card images\n"
                    "In game, F2 (or Select + Start held on a controller) opens the settings overlay.\n"
@@ -940,6 +964,25 @@ static void parse_args(int argc, char **argv) {
             g_cfg.pgxp = false;
         } else if (!strcmp(a, "--no-infinite-flashlight")) {
             g_cfg.infinite_flashlight = false;
+        } else if (!strcmp(a, "--enemy-damage") && v) {
+            /* PCT (all enemies) or GROUP=PCT */
+            const char *eq = strchr(v, '=');
+            int pct = atoi(eq ? eq + 1 : v), g = DMG_GROUP_COUNT;
+            pct = pct < 0 ? 0 : pct > ENEMY_DAMAGE_MAX ? ENEMY_DAMAGE_MAX : pct;
+            if (eq)
+                for (g = 0; g < DMG_GROUP_COUNT; g++)
+                    if (!strncmp(v, g_enemy_groups[g].id, (size_t)(eq - v)) &&
+                        !g_enemy_groups[g].id[eq - v])
+                        break;
+            if (!eq)
+                g_cfg.enemy_damage_pct = pct;
+            else if (g < DMG_GROUP_COUNT)
+                g_cfg.enemy_damage_group_pct[g] = pct;
+            else {
+                fprintf(stderr, "unknown enemy group in --enemy-damage %s\n", v);
+                exit(1);
+            }
+            i++;
         } else if (!strcmp(a, "--show-fps")) {
             g_cfg.show_fps = true;
         } else if (!strcmp(a, "--no-vsync")) {
@@ -970,6 +1013,16 @@ static void parse_args(int argc, char **argv) {
                 opt.shots[opt.nshots].vram = !strcmp(a, "--vram-shot");
                 opt.nshots++;
             }
+            i++;
+        } else if (!strcmp(a, "--record") && v) {
+            /* START:COUNT:STEP:PREFIX -> PREFIX_0000.png, ... */
+            int n = 0;
+            if (sscanf(v, "%ld:%ld:%ld:%n", &opt.record.start, &opt.record.count,
+                       &opt.record.step, &n) < 3 || !n || opt.record.step < 1) {
+                fprintf(stderr, "bad --record %s (use START:COUNT:STEP:PREFIX)\n", v);
+                exit(1);
+            }
+            snprintf(opt.record.prefix, sizeof opt.record.prefix, "%s", v + n);
             i++;
         } else if (!strcmp(a, "--stick") && v) {
             /* FRAME:LEN:LX:LY:RX:RY (decimal 0-255, 128 = centre) */
@@ -1033,6 +1086,8 @@ static void apply_settings(const Settings *c) {
     g_sprint_pct = c->sprint ? c->sprint_pct : 100;
     g_infinite_flashlight = c->infinite_flashlight;
     g_cycle_scale = cycle_scale_for(c->cpu_pct);
+    g_enemy_damage_pct = c->enemy_damage_pct;
+    memcpy(g_enemy_damage_group_pct, c->enemy_damage_group_pct, sizeof g_enemy_damage_group_pct);
     if (!opt.exe && c->skip_intro)
         opt.exe = "ALIEN.BIN";
 }

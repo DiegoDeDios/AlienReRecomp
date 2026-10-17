@@ -883,6 +883,26 @@ void draw_settings(ImDrawList *dl) {
         c->cpu_pct = cpv[ci];
         mark(&c->cpu_pct);
     }
+
+    section("ENEMY DAMAGE");
+    float ed = (float)c->enemy_damage_pct;
+    if (slider("All enemies", &ed, 0, ENEMY_DAMAGE_MAX, 10, "%.0f%%",
+               "Damage you take from enemy attacks, relative to the original game; the "
+               "difficulty setting still applies on top. Falls, drowning and your own "
+               "explosions are not affected. Added by this port.")) {
+        c->enemy_damage_pct = (int)ed;
+        mark(&c->enemy_damage_pct);
+    }
+    for (int g = 0; g < DMG_GROUP_COUNT; g++) {
+        static char desc[DMG_GROUP_COUNT][200];
+        snprintf(desc[g], sizeof desc[g], "%s Applied on top of \"All enemies\".",
+                 g_enemy_groups[g].desc);
+        float gv = (float)c->enemy_damage_group_pct[g];
+        if (slider(g_enemy_groups[g].label, &gv, 0, ENEMY_DAMAGE_MAX, 10, "%.0f%%", desc[g])) {
+            c->enemy_damage_group_pct[g] = (int)gv;
+            mark(&c->enemy_damage_group_pct[g]);
+        }
+    }
     ImGui::Dummy(ImVec2(0, 8 * L.U));
     ImGui::EndChild();
 

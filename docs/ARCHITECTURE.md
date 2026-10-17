@@ -124,8 +124,8 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   settings in effect and applies PGXP (clearing the shadow state when it is
   switched back on), widescreen (`ws_configure`; the window is reshaped on
   resume), smooth scaling, fullscreen, frame-rate display, sprint, infinite
-  flashlight, CPU speed and mouse settings; bindings are read live by
-  `input_read`.
+  flashlight, enemy damage, CPU speed and mouse settings; bindings are read
+  live by `input_read`.
   Internal resolution, VSync and skip intro are tagged "applies on next
   start". Controller buttons held when the overlay opens are ignored until
   released, and after it closes game buttons are held back until released,
@@ -152,6 +152,10 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   into SDL's queue, a virtual SDL controller for `pad:` tokens, window
   captures including the overlay). Run them with `--save-dir` pointing at a
   scratch folder: they write `config.ini`.
+* `--record F:N:STEP:PREFIX` writes a numbered sequence of screenshots;
+  `tools/make_media.sh` uses it, with scripted input and `--poke`, to
+  regenerate the README images and animations (`docs/media`) from the
+  user's own disc.
 * REA (`verify_reconstruction`) can compare control-flow graphs once a
   Ghidra provider is configured; `tools/exe2elf.py` wraps the executable into
   a MIPS ELF with the recovered function symbols for that purpose.
@@ -227,7 +231,7 @@ feature; the software renderer always draws the original way.
 
 Holding Shift, or clicking the left stick on a controller (latched until the
 stick returns to centre; replaces L3), makes the player move faster
-(`--sprint-speed`, default 175 %). The player update (`0x8005ECBC`) converts the left stick into a
+(`--sprint-speed`, default 190 %). The player update (`0x8005ECBC`) converts the left stick into a
 target speed and calls a helper (`0x8005E8E8`) that accelerates the
 player's current speed towards it and produces the frame's displacement,
 which then goes through the normal collision code. The native wrapper of
@@ -248,6 +252,29 @@ an empty flashlight cannot be switched on. With the option on (default;
 `--no-infinite-flashlight` or the Settings page turn it off) the native
 wrapper fills the battery before and after the update, so it never runs
 down and the HUD shows 100%. Not during attract demos.
+
+### Enemy damage
+
+Settings › Enemy damage scales the damage the player takes from enemies:
+an "All enemies" percentage times one per kind of enemy (alien warriors,
+facehuggers, chestbursters, queen, newborn, marines and soldiers, sentry
+tank, acid blood), 0–200 % each, default 100 % (`--enemy-damage PCT` or
+`GROUP=PCT`; `[enemy_damage]` in `config.ini`). The game's difficulty
+multiplier still applies afterwards. Two native wrappers do it:
+
+* Message delivery (`0x8004DEA8`): enemy attacks reach the player as
+  messages (code 4 hit, 7, and 402 explosion) whose damage is `msg+0x14`
+  and whose sender's object type is `msg+0x0A`. When the target is the
+  player and the sender type is an enemy creature (not the player, not a
+  level object), the damage is scaled before the game reads it.
+* Damage (`0x800519D0`): acid (kind 2: acid blood from an alien hit nearby,
+  acid particles) is applied directly, so it is scaled there when the
+  victim is the player.
+
+Falls, drowning and explosions the player causes are not touched, and
+nothing changes during attract demos (which run with the game's infinite
+health cheat anyway). At 100 % the wrappers write nothing. See
+[FINDINGS](FINDINGS.md#damage-and-messages-gameplay) for the routines.
 
 ### Option defaults
 

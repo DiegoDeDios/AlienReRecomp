@@ -4,3 +4,5 @@
 8005e8e8 wrap  # player movement speed helper (sprint)
 80020350 wrap  # main: adjust option defaults before the game starts
 800625cc wrap  # flashlight update (infinite flashlight)
+8004dea8 wrap  # deliver a message to an object (enemy attack damage)
+800519d0 wrap  # apply damage to an object (acid damage to the player)

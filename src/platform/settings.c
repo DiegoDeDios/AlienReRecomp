@@ -85,6 +85,20 @@ void settings_default_bindings(Settings *s) {
     }
 }
 
+const EnemyGroupInfo g_enemy_groups[DMG_GROUP_COUNT] = {
+    [DMG_ALIENS] = {"alien_warriors", "Alien warriors",
+                    "Claws and bites of the adult aliens."},
+    [DMG_FACEHUGGERS] = {"facehuggers", "Facehuggers", "Facehugger attacks."},
+    [DMG_CHESTBURSTERS] = {"chestbursters", "Chestbursters", "Chestburster attacks."},
+    [DMG_QUEEN] = {"queen", "Queen", "The alien queen."},
+    [DMG_NEWBORN] = {"newborn", "Newborn", "The Newborn."},
+    [DMG_MARINES] = {"marines", "Marines and soldiers",
+                     "Gunfire and attacks from marines and other human enemies."},
+    [DMG_SENTRY_TANK] = {"sentry_tank", "Sentry tank", "The sentry tank."},
+    [DMG_ACID] = {"acid_blood", "Acid blood",
+                  "Acid that sprays from aliens when they are hit close to you."},
+};
+
 void settings_defaults(Settings *s) {
     memset(s, 0, sizeof *s);
     s->skip_intro = false;
@@ -95,9 +109,12 @@ void settings_defaults(Settings *s) {
     s->vsync = true;
     s->smooth = true;
     s->sprint = true;
-    s->sprint_pct = 175;
+    s->sprint_pct = 190;
     s->infinite_flashlight = true;
     s->cpu_pct = 300;
+    s->enemy_damage_pct = 100;
+    for (int g = 0; g < DMG_GROUP_COUNT; g++)
+        s->enemy_damage_group_pct[g] = 100;
     s->mouse_look = true;
     s->mouse_sens = 6.0f;
     settings_default_bindings(s);
@@ -282,6 +299,13 @@ bool settings_load(Settings *s, const char *path) {
             else if (!strcmp(k, "sprint_speed")) s->sprint_pct = clampi(atoi(v), 100, 300);
             else if (!strcmp(k, "infinite_flashlight")) s->infinite_flashlight = parse_bool(v);
             else if (!strcmp(k, "cpu_speed")) s->cpu_pct = clampi(atoi(v), 50, 800);
+        } else if (!strcmp(sect, "enemy_damage")) {
+            int pct = clampi(atoi(v), 0, ENEMY_DAMAGE_MAX);
+            if (!strcmp(k, "all"))
+                s->enemy_damage_pct = pct;
+            for (int g = 0; g < DMG_GROUP_COUNT; g++)
+                if (!strcmp(k, g_enemy_groups[g].id))
+                    s->enemy_damage_group_pct[g] = pct;
         } else if (!strcmp(sect, "mouse")) {
             if (!strcmp(k, "mouse_look")) s->mouse_look = parse_bool(v);
             else if (!strcmp(k, "sensitivity")) s->mouse_sens = (float)atof(v);
@@ -321,6 +345,11 @@ bool settings_save(const Settings *s, const char *path) {
     fprintf(f, "[gameplay]\nsprint = %s\nsprint_speed = %d\ninfinite_flashlight = %s\n"
                "cpu_speed = %d\n\n",
             tf[s->sprint], s->sprint_pct, tf[s->infinite_flashlight], s->cpu_pct);
+    fprintf(f, "# damage the player takes, percent of the original (all x group)\n"
+               "[enemy_damage]\nall = %d\n", s->enemy_damage_pct);
+    for (int g = 0; g < DMG_GROUP_COUNT; g++)
+        fprintf(f, "%s = %d\n", g_enemy_groups[g].id, s->enemy_damage_group_pct[g]);
+    fprintf(f, "\n");
     fprintf(f, "[mouse]\nmouse_look = %s\nsensitivity = %.2f\n\n", tf[s->mouse_look],
             (double)s->mouse_sens);
     fprintf(f, "[keyboard]\n");

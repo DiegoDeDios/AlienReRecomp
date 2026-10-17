@@ -7,6 +7,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "../runtime/enemy_damage.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -58,6 +60,9 @@ typedef struct Settings {
     int sprint_pct;
     bool infinite_flashlight;  /* the flashlight battery never runs down */
     int cpu_pct;             /* emulated CPU speed (frame rate headroom) */
+    /* damage the player takes from enemies, percent of the original */
+    int enemy_damage_pct;                        /* all enemies */
+    int enemy_damage_group_pct[DMG_GROUP_COUNT]; /* per kind of enemy */
     /* input */
     bool mouse_look;
     float mouse_sens;
@@ -70,6 +75,15 @@ void settings_default_bindings(Settings *s);
 bool settings_load(Settings *s, const char *path);
 bool settings_save(const Settings *s, const char *path);
 const char *settings_path(void);
+
+/* Kinds of enemy with their own damage setting (DMG_*). */
+typedef struct EnemyGroupInfo {
+    const char *id;     /* config.ini key in [enemy_damage] */
+    const char *label;  /* shown in Settings */
+    const char *desc;
+} EnemyGroupInfo;
+extern const EnemyGroupInfo g_enemy_groups[DMG_GROUP_COUNT];
+#define ENEMY_DAMAGE_MAX 200
 
 /* binding names (shown in the launcher, stored in config.ini) */
 const char *bind_key_name(int code, char *buf, size_t n);

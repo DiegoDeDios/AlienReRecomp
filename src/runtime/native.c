@@ -2,6 +2,7 @@
  * Native replacements for recompiled functions (listed in
  * tools/overrides_*.txt, which the recompiler leaves out).
  */
+#include "enemy_damage.h"
 #include "pgxp.h"
 #include "psx.h"
 
@@ -66,7 +67,7 @@ void ALIEN_800A81BC(CPU *c) {
 #define DEMO_PLAYBACK  0x800A48C4u
 
 bool g_sprint;
-int g_sprint_pct = 175;
+int g_sprint_pct = 190;
 
 void ALIEN_8005E8E8__orig(CPU *c);
 void ALIEN_8005E8E8(CPU *c) {
@@ -106,6 +107,96 @@ void ALIEN_800625CC(CPU *c) {
     ALIEN_800625CC__orig(c);
     if (keep)
         flashlight_fill();
+}
+
+/* Enemy damage. Everything that hurts an object goes through
+ * damage(obj, amount, kind) at 0x800519D0, which for the player scales the
+ * amount by the difficulty (options +4: Easy 1.0, Normal 1.2, Hard 1.5,
+ * Deadly 2.0, from the table at 0x800A7A44) and subtracts it from health
+ * (obj+0x148, 4096 = full). Enemy attacks reach the player as messages,
+ * delivered by 0x8004DEA8(target, msg): code 4 (hit, e.g. a melee strike:
+ * 0x8006FB9C sends 4096 / hits-to-kill), 7, and 402 (explosion). Their
+ * damage is msg+0x14 and the sender's object type msg+0x0A (the message
+ * constructor 0x8004D9B0 fills both). Acid blood (kind 2: message 8 from an
+ * alien that is hit, and acid particles, 0x800152C4) calls damage()
+ * directly. Falls, drowning and other hazards are left alone, as are
+ * explosions the player causes. */
+#define MSG_TYPE   0x0A  /* sender's object type (obj+0x142) */
+#define MSG_DAMAGE 0x14
+#define MSG_CODE   0x24
+#define MSG_SENDER 0x2C
+
+int g_enemy_damage_pct = 100;
+int g_enemy_damage_group_pct[DMG_GROUP_COUNT] = {100, 100, 100, 100, 100, 100, 100, 100};
+
+/* Object types (obj+0x142; names in the table at 0x8009905C). Returns the
+ * group, DMG_GROUP_COUNT for other creatures (eggs, clones, egg sac: only
+ * the "all enemies" value applies), or -1 for anything that is not an
+ * enemy (playable characters, level objects). */
+static int enemy_group(uint32_t type) {
+    switch (type) {
+    case 19: return DMG_FACEHUGGERS;
+    case 20: return DMG_CHESTBURSTERS;
+    case 21: case 22: return DMG_ALIENS;
+    case 23: return DMG_NEWBORN;
+    case 24: case 25: return DMG_QUEEN;
+    case 33: return DMG_SENTRY_TANK;
+    case 18: case 34: return DMG_GROUP_COUNT;
+    default:
+        if ((type >= 9 && type <= 17) || (type >= 35 && type <= 39))
+            return DMG_MARINES;
+        if (type >= 26 && type <= 32)
+            return DMG_GROUP_COUNT;
+        return -1;
+    }
+}
+
+static uint32_t enemy_damage(uint32_t amount, int group) {
+    int64_t pct = (int64_t)g_enemy_damage_pct *
+                  (group < DMG_GROUP_COUNT ? g_enemy_damage_group_pct[group] : 100);
+    int32_t a = (int32_t)amount;
+    if (pct == 10000 || a <= 0)
+        return amount;
+    int64_t v = ((int64_t)a * pct + 5000) / 10000;
+    if (v < 1 && pct > 0)
+        v = 1; /* a hit still registers */
+    return (uint32_t)(v > 0x7FFF ? 0x7FFF : v);
+}
+
+static bool hurts_player(uint32_t obj) {
+    return obj && obj == mem_r32(PLAYER_OBJ_PTR) && mem_r32(DEMO_PLAYBACK) == 0;
+}
+
+void ALIEN_8004DEA8__orig(CPU *c);
+void ALIEN_8004DEA8(CPU *c) {
+    uint32_t msg = c->r[5];
+    if (msg && hurts_player(c->r[4])) {
+        uint32_t code = mem_r16(msg + MSG_CODE);
+        if ((code == 4 || code == 7 || code == 402) && mem_r32(msg + MSG_SENDER) != c->r[4]) {
+            uint32_t type = mem_r16(msg + MSG_TYPE);
+            int group = enemy_group(type);
+            if (group >= 0) {
+                uint32_t a = mem_r32(msg + MSG_DAMAGE), b = enemy_damage(a, group);
+                if (b != a) {
+                    mem_w32(msg + MSG_DAMAGE, b);
+                    LOGD("damage", "message %u from type %u: %d -> %d", code, type, (int)a,
+                         (int)b);
+                }
+            }
+        }
+    }
+    ALIEN_8004DEA8__orig(c);
+}
+
+void ALIEN_800519D0__orig(CPU *c);
+void ALIEN_800519D0(CPU *c) {
+    if (c->r[6] == 2 && hurts_player(c->r[4])) {
+        uint32_t a = c->r[5];
+        c->r[5] = enemy_damage(a, DMG_ACID);
+        if (c->r[5] != a)
+            LOGD("damage", "acid: %d -> %d", (int)a, (int)c->r[5]);
+    }
+    ALIEN_800519D0__orig(c);
 }
 
 /* main (0x80020350). Option defaults live in the options block at
