@@ -5,6 +5,10 @@
  * screen from PACK.BIN), plus Settings and Controls pages styled after the
  * game's own option screens: "OFF  ON" toggles, left/right choices and
  * segmented sliders. Works with mouse, keyboard and controller.
+ *
+ * The same pages also form the in-game overlay (F2 / Select+Start): a pause
+ * menu drawn over the frozen game image with the game renderer's GPU
+ * device, where settings apply while playing.
  */
 #include "launcher.h"
 
@@ -38,7 +42,7 @@ const ImU32 C_ACCENT = IM_COL32(104, 230, 120, 255);
 const ImU32 C_WARN = IM_COL32(232, 176, 70, 255);
 const ImU32 C_PANEL = IM_COL32(4, 7, 6, 222);
 
-enum Page { PAGE_MAIN, PAGE_SETTINGS, PAGE_CONTROLS };
+enum Page { PAGE_MAIN, PAGE_SETTINGS, PAGE_CONTROLS, PAGE_QUIT };
 
 /* Keyboard/controller navigation of the Settings and Controls pages: the
  * items registered last frame form rows (and columns in the bindings
@@ -94,6 +98,18 @@ struct Launcher {
     std::vector<SDL_Scancode> script;  /* --launcher-keys: synthetic key presses */
     size_t script_pos = 0;
     int script_tick = 0;
+
+    /* in-game overlay */
+    bool ingame = false;
+    bool imgui_ready = false;   /* the overlay's ImGui context exists */
+    OverlayInfo info = {};
+    int overlay_result = OVERLAY_OPEN;
+    int quit_sel = 0;
+    /* controller buttons held when the overlay opened (e.g. Select+Start)
+     * are ignored until every button has been released */
+    bool pad_blocked = false;
+    const char *tag = nullptr;  /* note drawn at the right of the next row */
+    bool tag_warn = false;
 };
 
 Launcher L;
@@ -287,24 +303,27 @@ void background(ImDrawList *dl) {
 }
 
 /* ---- main menu ---- */
+/* Key press for navigation; controller buttons are ignored while blocked. */
+bool pressed(ImGuiKey k, bool repeat = true) {
+    if (L.pad_blocked && ImGui::IsGamepadKey(k))
+        return false;
+    return ImGui::IsKeyPressed(k, repeat);
+}
+
 bool nav_up() {
-    return ImGui::IsKeyPressed(ImGuiKey_UpArrow) || ImGui::IsKeyPressed(ImGuiKey_GamepadDpadUp) ||
-           ImGui::IsKeyPressed(ImGuiKey_GamepadLStickUp);
+    return pressed(ImGuiKey_UpArrow) || pressed(ImGuiKey_GamepadDpadUp) ||
+           pressed(ImGuiKey_GamepadLStickUp);
 }
 bool nav_down() {
-    return ImGui::IsKeyPressed(ImGuiKey_DownArrow) ||
-           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadDown) ||
-           ImGui::IsKeyPressed(ImGuiKey_GamepadLStickDown);
+    return pressed(ImGuiKey_DownArrow) || pressed(ImGuiKey_GamepadDpadDown) ||
+           pressed(ImGuiKey_GamepadLStickDown);
 }
 bool nav_accept() {
-    return ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
-           ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false) ||
-           ImGui::IsKeyPressed(ImGuiKey_Space, false) ||
-           ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown, false);
+    return pressed(ImGuiKey_Enter, false) || pressed(ImGuiKey_KeypadEnter, false) ||
+           pressed(ImGuiKey_Space, false) || pressed(ImGuiKey_GamepadFaceDown, false);
 }
 bool nav_back() {
-    return ImGui::IsKeyPressed(ImGuiKey_Escape, false) ||
-           ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false);
+    return pressed(ImGuiKey_Escape, false) || pressed(ImGuiKey_GamepadFaceRight, false);
 }
 
 void open_page(Page p) {
@@ -317,13 +336,12 @@ void open_page(Page p) {
 }
 
 bool key_left() {
-    return ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft) ||
-           ImGui::IsKeyPressed(ImGuiKey_GamepadLStickLeft);
+    return pressed(ImGuiKey_LeftArrow) || pressed(ImGuiKey_GamepadDpadLeft) ||
+           pressed(ImGuiKey_GamepadLStickLeft);
 }
 bool key_right() {
-    return ImGui::IsKeyPressed(ImGuiKey_RightArrow) ||
-           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight) ||
-           ImGui::IsKeyPressed(ImGuiKey_GamepadLStickRight);
+    return pressed(ImGuiKey_RightArrow) || pressed(ImGuiKey_GamepadDpadRight) ||
+           pressed(ImGuiKey_GamepadLStickRight);
 }
 
 void nav_begin() {
@@ -409,40 +427,49 @@ void nav_item_post(int idx) {
     }
 }
 
-void draw_main(ImDrawList *dl) {
-    enum { M_START, M_DISC, M_SETTINGS, M_CONTROLS, M_QUIT, M_COUNT };
-    static const char *const items[M_COUNT] = {"START GAME", "SELECT DISC IMAGE", "SETTINGS",
-                                               "CONTROLS", "QUIT"};
-    const bool ok = L.disc == DISC_OK;
-    float size = 34 * L.U, step = size * 1.38f;
-    float y0 = L.S.y * 0.60f, cx = L.S.x * 0.5f;
-    if (L.S.y * 0.60f + step * M_COUNT > L.S.y * 0.90f)
-        y0 = L.S.y * 0.90f - step * M_COUNT;
-
-    if (nav_up()) L.menu_sel = (L.menu_sel + M_COUNT - 1) % M_COUNT;
-    if (nav_down()) L.menu_sel = (L.menu_sel + 1) % M_COUNT;
-    int activate = nav_accept() ? L.menu_sel : -1;
+/* Vertical menu in the style of the game's front end, starting at y0.
+ * Returns the item activated this frame (keyboard, controller or click),
+ * or -1. Items flagged in `dim` are drawn faint but can still be chosen. */
+int menu(ImDrawList *dl, const char *const *items, int n, int *sel, float y0, const bool *dim) {
+    float size = 34 * L.U, step = size * 1.38f, cx = L.S.x * 0.5f;
+    if (nav_up()) *sel = (*sel + n - 1) % n;
+    if (nav_down()) *sel = (*sel + 1) % n;
+    int activate = nav_accept() ? *sel : -1;
 
     const ImGuiIO &io = ImGui::GetIO();
-    for (int i = 0; i < M_COUNT; i++) {
+    for (int i = 0; i < n; i++) {
         float y = y0 + i * step;
         ImVec2 ts = text_size(L.f_title, size, items[i]);
         float spacing = 4 * L.U, w = ts.x + spacing * (float)strlen(items[i]);
         ImRect r(ImVec2(cx - w * 0.5f - 30 * L.U, y - 4 * L.U),
                  ImVec2(cx + w * 0.5f + 30 * L.U, y + size));
         if (r.Contains(io.MousePos) && (io.MouseDelta.x != 0 || io.MouseDelta.y != 0))
-            L.menu_sel = i;
+            *sel = i;
         if (r.Contains(io.MousePos) && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
             activate = i;
-        bool sel = L.menu_sel == i;
-        bool dim = i == M_START && !ok;
-        if (sel) {
+        bool s = *sel == i;
+        bool faint = dim && dim[i];
+        if (s) {
             glow_bar(dl, cx, y + size * 0.20f, w * 0.75f + 60 * L.U, size * 0.55f, C_ACCENT, 0.50f);
             glow_bar(dl, cx, y + size * 0.46f, w * 0.85f + 80 * L.U, 1.5f * L.U, C_ACCENT, 0.9f);
         }
-        text_spaced(dl, L.f_title, size, cx, y, dim ? C_FAINT : sel ? C_HOT : C_TEXT, items[i],
+        text_spaced(dl, L.f_title, size, cx, y, faint ? C_FAINT : s ? C_HOT : C_TEXT, items[i],
                     spacing);
     }
+    return activate;
+}
+
+void draw_main(ImDrawList *dl) {
+    enum { M_START, M_DISC, M_SETTINGS, M_CONTROLS, M_QUIT, M_COUNT };
+    static const char *const items[M_COUNT] = {"START GAME", "SELECT DISC IMAGE", "SETTINGS",
+                                               "CONTROLS", "QUIT"};
+    const bool ok = L.disc == DISC_OK;
+    float step = 34 * L.U * 1.38f;
+    float y0 = L.S.y * 0.60f;
+    if (L.S.y * 0.60f + step * M_COUNT > L.S.y * 0.90f)
+        y0 = L.S.y * 0.90f - step * M_COUNT;
+    const bool dim[M_COUNT] = {!ok, false, false, false, false};
+    int activate = menu(dl, items, M_COUNT, &L.menu_sel, y0, dim);
     switch (activate) {
     case M_START:
         if (ok) {
@@ -491,6 +518,64 @@ void draw_main(ImDrawList *dl) {
     dl->AddText(L.f_body, fs, ImVec2(L.S.x - mx - cw, fy - fs * 1.25f), C_DIM, ctl);
 }
 
+/* ---- in-game overlay: pause menu ---- */
+/* dark framed panel (as on the Settings page) behind a centred menu, so the
+ * game image underneath cannot compete with the text */
+void menu_panel(ImDrawList *dl, float y0, float y1, float w) {
+    ImVec2 p0(L.S.x * 0.5f - w * 0.5f, y0), p1(L.S.x * 0.5f + w * 0.5f, y1);
+    dl->AddRectFilled(p0, p1, IM_COL32(4, 7, 6, 240), 6 * L.U);
+    dl->AddRect(p0, p1, IM_COL32(104, 230, 120, 60), 6 * L.U, 0, 1.0f * L.U);
+}
+
+void draw_pause(ImDrawList *dl) {
+    enum { P_RESUME, P_SETTINGS, P_CONTROLS, P_QUIT, P_COUNT };
+    static const char *const items[P_COUNT] = {"RESUME", "SETTINGS", "CONTROLS",
+                                               "QUIT TO DESKTOP"};
+    float step = 34 * L.U * 1.38f;
+    float y0 = L.S.y * 0.5f - step * P_COUNT * 0.5f + 30 * L.U;
+    menu_panel(dl, y0 - 128 * L.U, y0 + step * P_COUNT + 14 * L.U, 560 * L.U);
+    header(dl, "PAUSED", L.S.x * 0.5f, y0 - 92 * L.U);
+    int activate = menu(dl, items, P_COUNT, &L.menu_sel, y0, nullptr);
+    if (nav_back())
+        activate = P_RESUME;
+    switch (activate) {
+    case P_RESUME: L.overlay_result = OVERLAY_RESUME; break;
+    case P_SETTINGS: open_page(PAGE_SETTINGS); break;
+    case P_CONTROLS: open_page(PAGE_CONTROLS); break;
+    case P_QUIT:
+        L.quit_sel = 0;
+        L.page = PAGE_QUIT;
+        break;
+    default: break;
+    }
+
+    float fs = 17 * L.U, fy = L.S.y - fs - 18 * L.U, mx = 28 * L.U;
+    dl->AddText(L.f_body, fs, ImVec2(mx, fy), C_DIM,
+                "F2 or Select + Start on a controller: resume");
+    char ver[64];
+    snprintf(ver, sizeof ver, "Version %s", PORT_VERSION);
+    float vw = text_size(L.f_body, fs, ver).x;
+    dl->AddText(L.f_body, fs, ImVec2(L.S.x - mx - vw, fy), C_DIM, ver);
+}
+
+void draw_quit(ImDrawList *dl) {
+    static const char *const items[2] = {"CANCEL", "QUIT TO DESKTOP"};
+    float y = L.S.y * 0.5f - 120 * L.U;
+    menu_panel(dl, y - 36 * L.U, y + 120 * L.U + 34 * L.U * 1.38f * 2 + 14 * L.U, 640 * L.U);
+    header(dl, "QUIT TO DESKTOP?", L.S.x * 0.5f, y);
+    const char *m = "Progress since your last save will be lost.";
+    float fs = 20 * L.U;
+    float mw = text_size(L.f_body, fs, m).x;
+    dl->AddText(L.f_body, fs, ImVec2(L.S.x * 0.5f - mw * 0.5f, y + 58 * L.U), C_TEXT, m);
+    int activate = menu(dl, items, 2, &L.quit_sel, y + 120 * L.U, nullptr);
+    if (nav_back())
+        activate = 0;
+    if (activate == 0)
+        L.page = PAGE_MAIN;
+    else if (activate == 1)
+        L.overlay_result = OVERLAY_QUIT;
+}
+
 /* ---- option rows ---- */
 struct Row {
     bool hot = false, pressed = false, left = false, right = false;
@@ -530,7 +615,31 @@ Row row(const char *label, const char *desc, float h = 0) {
     float fs = 21 * L.U;
     dl->AddText(L.f_label, fs, ImVec2(o.r.Min.x + 16 * L.U, o.r.Min.y + (h - fs) * 0.5f),
                 disabled ? C_FAINT : o.hot ? C_HOT : C_TEXT, label);
+    if (L.tag) {
+        float ts = 14 * L.U;
+        float tw = text_size(L.f_label, ts, L.tag).x;
+        dl->AddText(L.f_label, ts, ImVec2(o.r.Max.x - 16 * L.U - tw, o.r.Min.y + (h - ts) * 0.5f),
+                    L.tag_warn ? C_WARN : C_DIM, L.tag);
+        L.tag = nullptr;
+    }
     return o;
+}
+
+/* In game: the next row only takes effect when the game is started again
+ * (highlighted once its value differs from the running one). */
+void restart_tag(bool pending) {
+    if (L.ingame) {
+        L.tag = "APPLIES ON NEXT START";
+        L.tag_warn = pending;
+    }
+}
+
+/* In game with the software renderer: the next row has no effect. */
+void hw_only_tag() {
+    if (L.ingame && L.info.software) {
+        L.tag = "NEEDS HARDWARE RENDERER";
+        L.tag_warn = false;
+    }
 }
 
 float value_x(const Row &r) { return r.r.Min.x + r.r.GetWidth() * 0.60f; }
@@ -679,8 +788,12 @@ void draw_settings(ImDrawList *dl) {
     ImGui::BeginChild("rows", ImVec2(cr.GetWidth(), cr.GetHeight() - desc_h), ImGuiChildFlags_None,
                       ImGuiWindowFlags_NoBackground);
     L.desc = nullptr;
+    const bool ig = L.ingame;
+    const bool hw_only = ig && L.info.software;
 
     section("GRAPHICS");
+    ImGui::BeginDisabled(hw_only);
+    hw_only_tag();
     if (toggle("Widescreen", &c->widescreen,
                "Wider field of view in 3D. Menus, the HUD, loading screens and movies stay 4:3."))
         mark(&c->widescreen);
@@ -691,29 +804,41 @@ void draw_settings(ImDrawList *dl) {
         if (c->aspect_w == aw[i] && c->aspect_h == ah[i])
             ai = i;
     ImGui::BeginDisabled(!c->widescreen);
+    hw_only_tag();
     if (choice("Aspect ratio", &ai, aspects, 4, "Match your display's shape.")) {
         c->aspect_w = aw[ai], c->aspect_h = ah[ai];
         mark(&c->aspect_w);
         mark(&c->aspect_h);
     }
     ImGui::EndDisabled();
+    ImGui::EndDisabled();
     static const char *const scales[] = {"1x (240p)", "2x (480p)", "3x (720p)", "4x (960p)",
                                          "5x (1200p)", "6x (1440p)", "7x (1680p)", "8x (1920p)"};
     int si = c->internal_scale - 1;
+    restart_tag(c->internal_scale != L.info.running_scale);
     if (choice("Internal resolution", &si, scales, 8,
-               "Resolution the 3D scenes are rendered at. Higher is sharper and needs more GPU "
-               "memory; 4x suits most displays.")) {
+               ig ? "Resolution the 3D scenes are rendered at. Higher is sharper and needs more "
+                    "GPU memory. Takes effect the next time the game starts."
+                  : "Resolution the 3D scenes are rendered at. Higher is sharper and needs more GPU "
+                    "memory; 4x suits most displays.")) {
         c->internal_scale = si + 1;
         mark(&c->internal_scale);
     }
+    ImGui::BeginDisabled(hw_only);
+    hw_only_tag();
     if (toggle("Precision geometry (PGXP)", &c->pgxp,
                "Removes the PlayStation's wobbling polygons and warping textures by keeping "
                "vertices at full precision and correcting texture perspective."))
         mark(&c->pgxp);
+    ImGui::EndDisabled();
     if (toggle("Smooth scaling", &c->smooth,
                "Filter the image when scaling it to the window. Off gives sharp, square pixels."))
         mark(&c->smooth);
-    if (toggle("VSync", &c->vsync, "Synchronise with the display to avoid tearing."))
+    restart_tag(c->vsync != L.info.running_vsync);
+    if (toggle("VSync", &c->vsync,
+               ig ? "Synchronise with the display to avoid tearing. Takes effect the next time "
+                    "the game starts."
+                  : "Synchronise with the display to avoid tearing."))
         mark(&c->vsync);
     if (toggle("Fullscreen", &c->fullscreen, "Also toggled in game with F11 or Cmd+Ctrl+F.")) {
         mark(&c->fullscreen);
@@ -735,8 +860,15 @@ void draw_settings(ImDrawList *dl) {
         mark(&c->sprint_pct);
     }
     ImGui::EndDisabled();
+    if (toggle("Infinite flashlight", &c->infinite_flashlight,
+               "The flashlight's battery never runs down. In the original it lasts about 20 "
+               "seconds and recharges while switched off. Added by this port."))
+        mark(&c->infinite_flashlight);
+    restart_tag(c->skip_intro != L.info.running_skip_intro);
     if (toggle("Skip intro movies", &c->skip_intro,
-               "Start at the title menu, skipping the logos and the opening movie."))
+               ig ? "Start at the title menu, skipping the logos and the opening movie. Takes "
+                    "effect the next time the game starts."
+                  : "Start at the title menu, skipping the logos and the opening movie."))
         mark(&c->skip_intro);
     static const char *const cpus[] = {"Original (100%)", "150%", "200%", "300% (recommended)",
                                        "400%"};
@@ -757,8 +889,10 @@ void draw_settings(ImDrawList *dl) {
     ImRect dr(ImVec2(cr.Min.x, cr.Max.y - desc_h), cr.Max);
     dl->AddLine(ImVec2(dr.Min.x, dr.Min.y), ImVec2(dr.Max.x, dr.Min.y), IM_COL32(104, 230, 120, 40));
     if (!L.desc)
-        L.desc = "Left/right or click to change a setting. Changes are saved automatically and "
-                 "apply when the game starts.";
+        L.desc = ig ? "Left/right or click to change a setting. Changes apply right away and are "
+                      "saved; settings marked \"applies on next start\" need a restart."
+                    : "Left/right or click to change a setting. Changes are saved automatically "
+                      "and apply when the game starts.";
     description(dl, dr);
 
     float by = L.S.y - 60 * L.U;
@@ -796,17 +930,16 @@ bool bind_cell(const char *id, const char *text, int row, int col, float x, floa
     ImGui::SetCursorScreenPos(ImVec2(x, y));
     ImGui::PushID(id);
     ImGui::BeginDisabled(fixed);
-    bool pressed = ImGui::InvisibleButton("cell", ImVec2(w, h));
+    bool clicked = ImGui::InvisibleButton("cell", ImVec2(w, h));
     ImGui::EndDisabled();
     nav_item_post(idx);
     bool hover = ImGui::IsItemHovered();
     bool hot = !fixed && ((hover && !L.nav_kb) || nav_is(idx));
-    pressed |= nav_is(idx) && L.in_accept;
+    clicked |= nav_is(idx) && L.in_accept;
     if (!fixed && hover && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
         *clear = true;
     if (!fixed && nav_is(idx) && L.cap.action < 0 &&
-        (ImGui::IsKeyPressed(ImGuiKey_Delete, false) ||
-         ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false)))
+        (pressed(ImGuiKey_Delete, false) || pressed(ImGuiKey_GamepadFaceLeft, false)))
         *clear = true;
     ImGui::PopID();
     ImDrawList *dl = ImGui::GetWindowDrawList();
@@ -821,7 +954,7 @@ bool bind_cell(const char *id, const char *text, int row, int col, float x, floa
     dl->PushClipRect(a, b, true);
     dl->AddText(L.f_body, fs, ImVec2(x + (w - ts.x) * 0.5f, y + (h - fs) * 0.5f), tc, t);
     dl->PopClipRect();
-    return pressed && !fixed;
+    return clicked && !fixed;
 }
 
 void draw_controls(ImDrawList *dl) {
@@ -984,6 +1117,9 @@ bool capture_event(const SDL_Event &e) {
     case SDL_EVENT_KEY_DOWN:
         if (e.key.repeat)
             return true;
+        if (e.key.scancode == SDL_SCANCODE_F1 || e.key.scancode == SDL_SCANCODE_F2 ||
+            e.key.scancode == SDL_SCANCODE_F11 || e.key.scancode == SDL_SCANCODE_F12)
+            return true; /* fixed port keys: mouse release, overlay, fullscreen, screenshot */
         if (e.key.scancode == SDL_SCANCODE_ESCAPE) {
             finish();
         } else if (e.key.scancode == SDL_SCANCODE_DELETE) {
@@ -1020,7 +1156,9 @@ bool capture_event(const SDL_Event &e) {
     case SDL_EVENT_KEY_UP:
     case SDL_EVENT_MOUSE_BUTTON_UP:
     case SDL_EVENT_GAMEPAD_BUTTON_UP:
-        return true;
+        /* releases still reach ImGui: the key that started the capture
+         * (Enter) would otherwise stay held there and swallow its next press */
+        return false;
     default:
         return false;
     }
@@ -1069,6 +1207,23 @@ void style() {
     s.DisabledAlpha = 1.0f; /* rows draw their own disabled look */
 }
 
+/* ImGui context, style, fonts and backends for a window and GPU device */
+void imgui_setup(SDL_Window *win, SDL_GPUDevice *dev, SDL_GPUTextureFormat fmt) {
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    /* keyboard/controller navigation is handled by the pages themselves */
+    style();
+    load_fonts();
+    ImGui_ImplSDL3_InitForSDLGPU(win);
+    ImGui_ImplSDLGPU3_InitInfo ii = {};
+    ii.Device = dev;
+    ii.ColorTargetFormat = fmt;
+    ii.MSAASamples = SDL_GPU_SAMPLECOUNT_1;
+    ImGui_ImplSDLGPU3_Init(&ii);
+}
+
 void frame() {
     ImGuiIO &io = ImGui::GetIO();
     L.S = io.DisplaySize;
@@ -1081,14 +1236,20 @@ void frame() {
     wf |= ImGuiWindowFlags_NoNav;
     ImGui::Begin("launcher", nullptr, wf);
     ImDrawList *bg = ImGui::GetBackgroundDrawList();
-    background(bg);
-    if (L.page != PAGE_MAIN)
-        bg->AddRectFilled(ImVec2(0, 0), L.S, IM_COL32(0, 0, 0, 120));
+    if (L.ingame) {
+        /* the paused game stays visible behind the menu */
+        bg->AddRectFilled(ImVec2(0, 0), L.S, IM_COL32(0, 0, 0, L.page == PAGE_MAIN ? 165 : 185));
+    } else {
+        background(bg);
+        if (L.page != PAGE_MAIN)
+            bg->AddRectFilled(ImVec2(0, 0), L.S, IM_COL32(0, 0, 0, 120));
+    }
     ImDrawList *dl = ImGui::GetWindowDrawList();
     switch (L.page) {
-    case PAGE_MAIN: draw_main(dl); break;
+    case PAGE_MAIN: L.ingame ? draw_pause(dl) : draw_main(dl); break;
     case PAGE_SETTINGS: draw_settings(dl); break;
     case PAGE_CONTROLS: draw_controls(dl); break;
+    case PAGE_QUIT: draw_quit(dl); break;
     }
     draw_capture_overlay(ImGui::GetForegroundDrawList());
     ImGui::End();
@@ -1168,6 +1329,19 @@ void run_script() {
         L.script_pos++;
 }
 
+/* F11 / Cmd+Ctrl+F: toggle fullscreen (saved like the Settings toggle) */
+bool fullscreen_key(const SDL_Event &e) {
+    if (e.type != SDL_EVENT_KEY_DOWN || e.key.repeat ||
+        !(e.key.scancode == SDL_SCANCODE_F11 ||
+          (e.key.scancode == SDL_SCANCODE_F && (e.key.mod & SDL_KMOD_GUI) &&
+           (e.key.mod & SDL_KMOD_CTRL))))
+        return false;
+    L.cfg->fullscreen = !L.cfg->fullscreen;
+    mark(&L.cfg->fullscreen);
+    SDL_SetWindowFullscreen(L.win, L.cfg->fullscreen);
+    return true;
+}
+
 } // namespace
 
 extern "C" void launcher_debug_keys(const char *list) {
@@ -1215,20 +1389,7 @@ extern "C" bool launcher_run(SDL_Window *win, Settings *cfg, Settings *saved, co
     }
     SDL_SetGPUSwapchainParameters(L.dev, win, SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
                                   SDL_GPU_PRESENTMODE_VSYNC);
-
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO &io = ImGui::GetIO();
-    io.IniFilename = nullptr;
-    /* keyboard/controller navigation is handled by the pages themselves */
-    style();
-    load_fonts();
-    ImGui_ImplSDL3_InitForSDLGPU(win);
-    ImGui_ImplSDLGPU3_InitInfo ii = {};
-    ii.Device = L.dev;
-    ii.ColorTargetFormat = SDL_GetGPUSwapchainTextureFormat(L.dev, win);
-    ii.MSAASamples = SDL_GPU_SAMPLECOUNT_1;
-    ImGui_ImplSDLGPU3_Init(&ii);
+    imgui_setup(win, L.dev, SDL_GetGPUSwapchainTextureFormat(L.dev, win));
 
     if (cfg->fullscreen)
         SDL_SetWindowFullscreen(win, true);
@@ -1245,15 +1406,8 @@ extern "C" bool launcher_run(SDL_Window *win, Settings *cfg, Settings *saved, co
                 L.result = 0;
             if (capture_event(e))
                 continue;
-            if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat &&
-                (e.key.scancode == SDL_SCANCODE_F11 ||
-                 (e.key.scancode == SDL_SCANCODE_F && (e.key.mod & SDL_KMOD_GUI) &&
-                  (e.key.mod & SDL_KMOD_CTRL)))) {
-                cfg->fullscreen = !cfg->fullscreen;
-                mark(&cfg->fullscreen);
-                SDL_SetWindowFullscreen(win, cfg->fullscreen);
+            if (fullscreen_key(e))
                 continue;
-            }
             ImGui_ImplSDL3_ProcessEvent(&e);
         }
         if (L.cap.action >= 0 && SDL_GetTicks() - L.cap.started > 8000)
@@ -1305,4 +1459,103 @@ extern "C" bool launcher_run(SDL_Window *win, Settings *cfg, Settings *saved, co
     SDL_DestroyGPUDevice(L.dev);
     L.dev = nullptr;
     return L.result == 1;
+}
+
+/* ---- in-game overlay ---- */
+
+extern "C" bool overlay_open(SDL_Window *win, SDL_GPUDevice *dev, SDL_GPUTextureFormat fmt,
+                             Settings *cfg, Settings *saved, const char *path,
+                             const OverlayInfo *info) {
+    if (!win || !dev || fmt == SDL_GPU_TEXTUREFORMAT_INVALID)
+        return false;
+    L.win = win;
+    L.dev = dev;
+    L.cfg = cfg;
+    L.saved = saved;
+    L.path = path;
+    L.info = *info;
+    if (!L.imgui_ready) {
+        /* created on first use and kept for the rest of the run */
+        imgui_setup(win, dev, fmt);
+        ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);
+        L.imgui_ready = true;
+    }
+    ImGuiIO &io = ImGui::GetIO();
+    io.ClearInputKeys();
+    io.ClearInputMouse();
+    L.ingame = true;
+    L.page = PAGE_MAIN;
+    L.menu_sel = 0;
+    L.quit_sel = 0;
+    L.nav_items.clear();
+    L.nav_prev.clear();
+    L.nav_kb = false;
+    L.cap.action = -1;
+    L.tag = nullptr;
+    L.pad_blocked = true;
+    L.overlay_result = OVERLAY_OPEN;
+    return true;
+}
+
+extern "C" void overlay_event(const SDL_Event *ev) {
+    if (!L.ingame)
+        return;
+    const SDL_Event &e = *ev;
+    if (capture_event(e))
+        return;
+    if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.scancode == SDL_SCANCODE_F2) {
+        L.overlay_result = OVERLAY_RESUME;
+        return;
+    }
+    if (fullscreen_key(e))
+        return;
+    ImGui_ImplSDL3_ProcessEvent(&e);
+}
+
+extern "C" int overlay_update(void) {
+    if (!L.ingame)
+        return OVERLAY_RESUME;
+    if (L.cap.action >= 0 && SDL_GetTicks() - L.cap.started > 8000)
+        L.cap.action = -1; /* stale capture (e.g. no controller) */
+    ImGui_ImplSDLGPU3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+    if (L.pad_blocked) {
+        bool held = false;
+        for (int k = ImGuiKey_GamepadStart; k <= ImGuiKey_GamepadRStickDown; k++)
+            held |= ImGui::IsKeyDown((ImGuiKey)k);
+        L.pad_blocked = held;
+    }
+    if (L.cap.action < 0 && pressed(ImGuiKey_GamepadStart, false))
+        L.overlay_result = OVERLAY_RESUME;
+    frame();
+    ImGui::Render();
+    if (L.overlay_result != OVERLAY_OPEN)
+        save_if_dirty();
+    return L.overlay_result;
+}
+
+extern "C" void overlay_render(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *target, int w, int h) {
+    (void)w, (void)h;
+    if (!L.ingame || !L.imgui_ready)
+        return;
+    ImDrawData *dd = ImGui::GetDrawData();
+    if (!dd || dd->DisplaySize.x <= 0 || dd->DisplaySize.y <= 0)
+        return;
+    ImGui_ImplSDLGPU3_PrepareDrawData(dd, cmd);
+    SDL_GPUColorTargetInfo ct = {};
+    ct.texture = target;
+    ct.load_op = SDL_GPU_LOADOP_LOAD; /* on top of the game image */
+    ct.store_op = SDL_GPU_STOREOP_STORE;
+    SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(cmd, &ct, 1, nullptr);
+    ImGui_ImplSDLGPU3_RenderDrawData(dd, cmd, rp);
+    SDL_EndGPURenderPass(rp);
+}
+
+extern "C" void overlay_close(void) {
+    if (!L.ingame)
+        return;
+    save_if_dirty();
+    L.cap.action = -1;
+    L.ingame = false;
 }

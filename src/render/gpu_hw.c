@@ -182,6 +182,9 @@ static struct {
     uint8_t *capture;
     int cap_w, cap_h;
     bool capture_wanted;
+    RenderOverlayFn overlay;
+    bool hold_aspect;
+    float held_aspect;
 } H;
 
 static SDL_GPUShader *make_shader(const char *entry, SDL_GPUShaderStage stage,
@@ -915,6 +918,14 @@ const GpuBackend g_gpu_hw = {
 /* ------------------------------------------------------------------ */
 /* presentation                                                        */
 
+/* FMV (24-bit) stays 4:3; everything else uses the configured display
+ * aspect (widescreen) */
+static float display_aspect(const DisplayInfo *d) {
+    if (H.hold_aspect)
+        return H.held_aspect;
+    return (g_ws_wide_display && !d->rgb24) ? g_ws_aspect : 4.0f / 3.0f;
+}
+
 static void display_pass(SDL_GPUTexture *target, SDL_GPUGraphicsPipeline *pipe,
                          int tw, int th) {
     DisplayInfo d;
@@ -925,9 +936,7 @@ static void display_pass(SDL_GPUTexture *target, SDL_GPUGraphicsPipeline *pipe,
                                  .store_op = SDL_GPU_STOREOP_STORE};
     SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(H.cmd, &ct, 1, NULL);
     if (d.enabled) {
-        /* FMV (24-bit) stays 4:3; everything else uses the configured
-         * display aspect (widescreen) */
-        float aspect = (g_ws_wide_display && !d.rgb24) ? g_ws_aspect : 4.0f / 3.0f;
+        float aspect = display_aspect(&d);
         float dw = (float)tw, dh = dw / aspect;
         if (dh > (float)th) {
             dh = (float)th;
@@ -953,22 +962,30 @@ static void upload_full_vram(void) {
     upload_rect(0, 0, VRAM_W, VRAM_H, false);
 }
 
-void render_present(void) {
-    if (!H.dev)
-        return;
+/* bring the VRAM texture up to date before reading the display area */
+static void present_prepare(void) {
     if (H.cfg.software)
         upload_full_vram();
     else
         flush_draws();
     ensure_cmd();
+}
+
+void render_present(void) {
+    if (!H.dev)
+        return;
+    present_prepare();
     if (H.win && !H.cfg.headless) {
         SDL_GPUTexture *sw = NULL;
         Uint32 w = 0, h = 0;
         if (!SDL_WaitAndAcquireGPUSwapchainTexture(H.cmd, H.win, &sw, &w, &h)) {
             LOGW("render", "swapchain: %s", SDL_GetError());
         }
-        if (sw)
+        if (sw) {
             display_pass(sw, H.disp_pipe, (int)w, (int)h);
+            if (H.overlay)
+                H.overlay(H.cmd, sw, (int)w, (int)h);
+        }
     } else if (H.capture_wanted) {
         DisplayInfo d;
         gpu_display_info(&d);
@@ -1027,6 +1044,85 @@ bool render_capture(uint8_t **rgb, int *w, int *h) {
 
 const char *render_device_name(void) {
     return H.dev ? SDL_GetGPUDeviceDriver(H.dev) : "none";
+}
+
+void render_set_overlay(RenderOverlayFn fn) { H.overlay = fn; }
+
+SDL_GPUDevice *render_gpu_device(void) { return H.dev; }
+
+SDL_GPUTextureFormat render_window_format(void) {
+    if (!H.dev || !H.win || H.cfg.headless)
+        return SDL_GPU_TEXTUREFORMAT_INVALID;
+    return SDL_GetGPUSwapchainTextureFormat(H.dev, H.win);
+}
+
+bool render_capture_window(uint8_t **rgb, int *w, int *h) {
+    if (!H.dev || !H.win || H.cfg.headless || !H.disp_pipe)
+        return false;
+    int pw = 0, ph = 0;
+    SDL_GetWindowSizeInPixels(H.win, &pw, &ph);
+    if (pw <= 0 || ph <= 0)
+        return false;
+    SDL_GPUTextureFormat fmt = render_window_format();
+    SDL_GPUTextureCreateInfo ti = {
+        .type = SDL_GPU_TEXTURETYPE_2D,
+        .format = fmt,
+        .usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+        .width = (Uint32)pw,
+        .height = (Uint32)ph,
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+    };
+    SDL_GPUTexture *t = SDL_CreateGPUTexture(H.dev, &ti);
+    SDL_GPUTransferBufferCreateInfo bi = {.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
+                                          .size = (Uint32)(pw * ph * 4)};
+    SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(H.dev, &bi);
+    if (!t || !tb) {
+        LOGW("render", "window capture: %s", SDL_GetError());
+        if (t) SDL_ReleaseGPUTexture(H.dev, t);
+        if (tb) SDL_ReleaseGPUTransferBuffer(H.dev, tb);
+        return false;
+    }
+    present_prepare();
+    display_pass(t, H.disp_pipe, pw, ph);
+    if (H.overlay)
+        H.overlay(H.cmd, t, pw, ph);
+    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(H.cmd);
+    SDL_GPUTextureRegion r = {.texture = t, .w = (Uint32)pw, .h = (Uint32)ph, .d = 1};
+    SDL_GPUTextureTransferInfo dst = {tb, 0, (Uint32)pw, (Uint32)ph};
+    SDL_DownloadFromGPUTexture(cp, &r, &dst);
+    SDL_EndGPUCopyPass(cp);
+    SDL_GPUFence *f = SDL_SubmitGPUCommandBufferAndAcquireFence(H.cmd);
+    H.cmd = NULL;
+    SDL_WaitForGPUFences(H.dev, true, &f, 1);
+    SDL_ReleaseGPUFence(H.dev, f);
+    const uint8_t *p = SDL_MapGPUTransferBuffer(H.dev, tb, false);
+    bool bgra = fmt == SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM ||
+                fmt == SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM_SRGB;
+    uint8_t *out = malloc((size_t)pw * (size_t)ph * 3);
+    for (int i = 0; i < pw * ph; i++) {
+        out[i * 3 + 0] = p[i * 4 + (bgra ? 2 : 0)];
+        out[i * 3 + 1] = p[i * 4 + 1];
+        out[i * 3 + 2] = p[i * 4 + (bgra ? 0 : 2)];
+    }
+    SDL_UnmapGPUTransferBuffer(H.dev, tb);
+    SDL_ReleaseGPUTransferBuffer(H.dev, tb);
+    SDL_ReleaseGPUTexture(H.dev, t);
+    *rgb = out;
+    *w = pw;
+    *h = ph;
+    return true;
+}
+
+void render_set_smooth(bool smooth) { H.cfg.smooth = smooth; }
+
+void render_hold_display_aspect(bool hold) {
+    if (hold && !H.hold_aspect) {
+        DisplayInfo d;
+        gpu_display_info(&d);
+        H.held_aspect = display_aspect(&d);
+    }
+    H.hold_aspect = hold;
 }
 
 bool render_init(SDL_Window *win, const RenderConfig *cfg) {

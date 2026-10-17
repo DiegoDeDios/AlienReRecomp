@@ -111,6 +111,26 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   handled by the pages themselves (rows, columns in the bindings table) so
   keyboard and controller behave the same; mouse hover and clicks work too.
   Fonts come from the system (macOS) with ImGui's built-in font as fallback.
+* **In-game overlay** (F2, or Select+Start held for 20 frames): the
+  launcher's Settings and Controls pages plus a pause menu, drawn with the
+  game renderer's own SDL GPU device. `platform_vblank` runs the overlay
+  loop modally inside the vblank event, so the emulated machine (and the
+  audio stream) is paused while it is open and nothing needs saving or
+  restoring. Each frame the renderer draws the frozen display area and then
+  calls the overlay hook (`render_set_overlay`), which renders ImGui into
+  the same swapchain image; the frozen frame keeps the aspect ratio it was
+  drawn with (`render_hold_display_aspect`). Edits go to the run's settings
+  and `config.ini`; `apply_live` in `main.c` diffs them against the
+  settings in effect and applies PGXP (clearing the shadow state when it is
+  switched back on), widescreen (`ws_configure`; the window is reshaped on
+  resume), smooth scaling, fullscreen, frame-rate display, sprint, infinite
+  flashlight, CPU speed and mouse settings; bindings are read live by
+  `input_read`.
+  Internal resolution, VSync and skip intro are tagged "applies on next
+  start". Controller buttons held when the overlay opens are ignored until
+  released, and after it closes game buttons are held back until released,
+  so the key that closed it (Esc/Start/Enter) does not reach the game.
+  Select and Start never reach the game while both are held.
 * **Settings** (`settings.c`): one `Settings` struct, read from and written
   to `config.ini` (INI sections `game`, `video`, `gameplay`, `mouse`,
   `keyboard`, `controller`). Layering: defaults, then `config.ini`, then
@@ -127,6 +147,11 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
 * `--verify ADDR` snapshots CPU + RAM when the function is entered, runs it
   once in the reference interpreter and once as recompiled C, and diffs
   registers and all memory.
+* UI tests: `--launcher-keys`/`--launcher-shot` drive the launcher, and
+  `--overlay-keys`/`--overlay-shot` the in-game overlay (key events pushed
+  into SDL's queue, a virtual SDL controller for `pad:` tokens, window
+  captures including the overlay). Run them with `--save-dir` pointing at a
+  scratch folder: they write `config.ini`.
 * REA (`verify_reconstruction`) can compare control-flow graphs once a
   Ghidra provider is configured; `tools/exe2elf.py` wraps the executable into
   a MIPS ELF with the recovered function symbols for that purpose.
@@ -210,6 +235,19 @@ that helper scales the target speed and the acceleration for the player
 object while it is standing (not crouched) and no attract demo is playing,
 so walls, slopes and doors behave as usual and the speed ramps up and down
 smoothly.
+
+### Infinite flashlight
+
+Ripley carries a flashlight from the second level on (inventory item 76,
+switched on and off with Use while selected). Its battery is the item's
+amount in the inventory object (`[0x800A49F0]+0x44`, capacity 1200). The
+flashlight update (`0x800625CC`, called every frame for the player) drains
+it by one per vblank while the light is on, switches the light off when it
+is empty (about 20 seconds), and otherwise recharges it by two per vblank;
+an empty flashlight cannot be switched on. With the option on (default;
+`--no-infinite-flashlight` or the Settings page turn it off) the native
+wrapper fills the battery before and after the update, so it never runs
+down and the HUD shows 100%. Not during attract demos.
 
 ### Option defaults
 

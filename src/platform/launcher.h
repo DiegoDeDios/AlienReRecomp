@@ -1,6 +1,7 @@
 /*
  * Start-up launcher: choose the disc image, change settings and controls,
- * then start the game. Dear ImGui on the SDL GPU API.
+ * then start the game. The same pages are shown in game as an overlay.
+ * Dear ImGui on the SDL GPU API.
  */
 #pragma once
 #include <SDL3/SDL.h>
@@ -26,6 +27,31 @@ bool launcher_run(SDL_Window *win, Settings *cfg, Settings *saved, const char *p
 void launcher_debug_shot(const char *path, const char *page);
 /* Testing: comma-separated SDL key names pressed one after another. */
 void launcher_debug_keys(const char *list);
+
+/* ---- In-game overlay ------------------------------------------------
+ * The launcher's Settings and Controls pages plus a pause menu, drawn on
+ * top of the running game with the game renderer's GPU device. The
+ * frontend runs the loop: overlay_open, then per frame overlay_event for
+ * each SDL event, overlay_update, and a presentation that calls
+ * overlay_render; overlay_close when overlay_update stops returning
+ * OVERLAY_OPEN. Settings edits go to `cfg` (applied live by the frontend)
+ * and `saved`, which is written to `path`. */
+typedef struct OverlayInfo {
+    bool software;           /* software renderer: no PGXP / widescreen */
+    /* values this run started with, for settings that need a restart */
+    int running_scale;
+    bool running_vsync;
+    bool running_skip_intro;
+} OverlayInfo;
+
+enum { OVERLAY_OPEN, OVERLAY_RESUME, OVERLAY_QUIT };
+
+bool overlay_open(SDL_Window *win, SDL_GPUDevice *dev, SDL_GPUTextureFormat fmt,
+                  Settings *cfg, Settings *saved, const char *path, const OverlayInfo *info);
+void overlay_event(const SDL_Event *e);
+int overlay_update(void);
+void overlay_render(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *target, int w, int h);
+void overlay_close(void);
 
 #ifdef __cplusplus
 }

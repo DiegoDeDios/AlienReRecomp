@@ -193,6 +193,7 @@ void pad_set_analog(int port, uint8_t rx, uint8_t ry, uint8_t lx, uint8_t ly);
 /* ---- game enhancements (native.c) ---- */
 extern bool g_sprint;      /* sprint input held this frame */
 extern int g_sprint_pct;   /* player movement speed while sprinting, percent */
+extern bool g_infinite_flashlight; /* flashlight battery never runs down */
 
 /* ---- platform (frontend) ---- */
 void platform_vblank(void);   /* present + input + pacing, called each vblank */

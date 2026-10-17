@@ -96,6 +96,7 @@ void settings_defaults(Settings *s) {
     s->smooth = true;
     s->sprint = true;
     s->sprint_pct = 175;
+    s->infinite_flashlight = true;
     s->cpu_pct = 300;
     s->mouse_look = true;
     s->mouse_sens = 6.0f;
@@ -279,6 +280,7 @@ bool settings_load(Settings *s, const char *path) {
         } else if (!strcmp(sect, "gameplay")) {
             if (!strcmp(k, "sprint")) s->sprint = parse_bool(v);
             else if (!strcmp(k, "sprint_speed")) s->sprint_pct = clampi(atoi(v), 100, 300);
+            else if (!strcmp(k, "infinite_flashlight")) s->infinite_flashlight = parse_bool(v);
             else if (!strcmp(k, "cpu_speed")) s->cpu_pct = clampi(atoi(v), 50, 800);
         } else if (!strcmp(sect, "mouse")) {
             if (!strcmp(k, "mouse_look")) s->mouse_look = parse_bool(v);
@@ -316,8 +318,9 @@ bool settings_save(const Settings *s, const char *path) {
                "pgxp = %s\nvsync = %s\nsmooth = %s\nfullscreen = %s\nshow_fps = %s\n\n",
             tf[s->widescreen], s->aspect_w, s->aspect_h, s->internal_scale,
             tf[s->pgxp], tf[s->vsync], tf[s->smooth], tf[s->fullscreen], tf[s->show_fps]);
-    fprintf(f, "[gameplay]\nsprint = %s\nsprint_speed = %d\ncpu_speed = %d\n\n",
-            tf[s->sprint], s->sprint_pct, s->cpu_pct);
+    fprintf(f, "[gameplay]\nsprint = %s\nsprint_speed = %d\ninfinite_flashlight = %s\n"
+               "cpu_speed = %d\n\n",
+            tf[s->sprint], s->sprint_pct, tf[s->infinite_flashlight], s->cpu_pct);
     fprintf(f, "[mouse]\nmouse_look = %s\nsensitivity = %.2f\n\n", tf[s->mouse_look],
             (double)s->mouse_sens);
     fprintf(f, "[keyboard]\n");
@@ -352,6 +355,8 @@ static bool pad_held(SDL_Gamepad *pad, int code) {
         return SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 16000;
     return code < SDL_GAMEPAD_BUTTON_COUNT && SDL_GetGamepadButton(pad, (SDL_GamepadButton)code);
 }
+
+bool input_pad_held(SDL_Gamepad *pad, int code) { return pad_held(pad, code); }
 
 static bool key_held(const bool *kb, uint32_t mouse_buttons, int code) {
     if (code >= BIND_MOUSE)

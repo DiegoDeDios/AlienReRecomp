@@ -79,6 +79,35 @@ void ALIEN_8005E8E8(CPU *c) {
     ALIEN_8005E8E8__orig(c);
 }
 
+/* Flashlight update (0x800625CC, every frame for the player; a1 = the
+ * player's state block, also at gp+0x478). While the light is on (state
+ * +0x40 holds the light object) the battery, kept as the flashlight item's
+ * amount in the inventory (+0x44), drains one unit per vblank and the light
+ * goes out when it reaches 0; while off it recharges two units per vblank
+ * up to the capacity, and an empty flashlight cannot be switched on.
+ * Infinite flashlight keeps the battery full around the update, so it never
+ * runs down (the HUD shows 100%). Not during attract-mode demo playback. */
+#define INVENTORY_PTR       0x800A49F0u /* gp+0x47C */
+#define FLASHLIGHT_CAPACITY 0x800A7B10u /* 1200 vblanks of light */
+
+bool g_infinite_flashlight = true;
+
+static void flashlight_fill(void) {
+    uint32_t inv = mem_r32(INVENTORY_PTR);
+    if (inv)
+        mem_w16(inv + 0x44, (uint16_t)mem_r32(FLASHLIGHT_CAPACITY));
+}
+
+void ALIEN_800625CC__orig(CPU *c);
+void ALIEN_800625CC(CPU *c) {
+    bool keep = g_infinite_flashlight && mem_r32(DEMO_PLAYBACK) == 0;
+    if (keep)
+        flashlight_fill();
+    ALIEN_800625CC__orig(c);
+    if (keep)
+        flashlight_fill();
+}
+
 /* main (0x80020350). Option defaults live in the options block at
  * 0x80096BBC (.data); at boot the game replaces them with the options
  * stored in the newest save on the memory card, if there is one. The

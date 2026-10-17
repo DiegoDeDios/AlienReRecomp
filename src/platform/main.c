@@ -42,6 +42,8 @@ static struct {
     int nshots;
     struct { long frame; char path[512]; } dumps[16];
     int ndumps;
+    struct { long frame; uint32_t addr, value; int size; } pokes[32];
+    int npokes;
     struct { long frame; long len; uint16_t button; bool sprint; } presses[256];
     int npresses;
     struct { long frame; long len; int lx, ly, rx, ry; } sticks[64];
@@ -62,6 +64,7 @@ static struct {
     const char *save_dir;
     bool no_launcher;
     const char *launcher_shot, *launcher_page, *launcher_keys;
+    const char *overlay_shot;
 } opt = {.max_frames = -1, .scale = 3.0f, .render_scale = 4, .smooth = true,
        .mouse_sens = 6.0f, .fuzz_from = -1, .aspect = 16.0f / 9.0f};
 
@@ -77,6 +80,30 @@ static bool g_turbo;
 static long g_frame;
 static uint8_t *g_rgb;      /* display conversion buffer (RGB24) */
 static Settings g_cfg;      /* user settings for this run (config.ini + CLI) */
+static Settings g_saved;    /* contents of config.ini (no command-line overrides) */
+static Settings g_applied;  /* the settings currently in effect */
+
+/* in-game overlay (F2, or Select+Start held on a controller) */
+#define OVERLAY_COMBO_FRAMES 20
+static OverlayInfo g_overlay_info;
+static bool g_overlay_want;    /* open it once this vblank's input is read */
+static int g_combo_frames;
+static bool g_combo_latched;   /* Select+Start kept from the game until released */
+static bool g_input_hold;      /* after closing: buttons still held stay with the overlay */
+
+/* --overlay-keys: scripted input for testing the overlay. Tokens are SDL
+ * key names, "pad:BUTTON[+BUTTON][:TICKS]" (a virtual controller),
+ * "WAITn" and "SHOT" (window image with overlay, see --overlay-shot). One
+ * token is processed every few ticks: a tick is a vblank while the game
+ * runs and a frame while the overlay is open. */
+enum { TOK_KEY, TOK_PAD, TOK_WAIT, TOK_SHOT };
+static struct {
+    long start;
+    struct { int kind, code, arg; } tok[128];
+    int n, pos, tick, shots;
+    bool uses_pad;
+    SDL_Joystick *vpad;
+} g_script;
 
 /* ------------------------------------------------------------------ */
 /* display conversion                                                  */
@@ -168,6 +195,31 @@ static uint8_t stick_add(uint8_t base, float delta) {
     return (uint8_t)v;
 }
 
+/* Select+Start held together on the controller (the buttons bound to the
+ * PlayStation's Select and Start) opens the overlay. While both are down
+ * neither reaches the game, and each stays masked until released, so the
+ * game's own pause menu does not open as well. */
+static bool overlay_combo(void) {
+    if (!g_pad) {
+        g_combo_frames = 0;
+        g_combo_latched = false;
+        return false;
+    }
+    int sel = g_cfg.pad[ACT_SELECT] >= 0 ? g_cfg.pad[ACT_SELECT] : SDL_GAMEPAD_BUTTON_BACK;
+    int st = g_cfg.pad[ACT_START] >= 0 ? g_cfg.pad[ACT_START] : SDL_GAMEPAD_BUTTON_START;
+    bool a = input_pad_held(g_pad, sel), b = input_pad_held(g_pad, st);
+    if (a && b) {
+        g_combo_latched = true;
+        if (++g_combo_frames == OVERLAY_COMBO_FRAMES)
+            g_overlay_want = true;
+    } else {
+        g_combo_frames = 0;
+        if (!a && !b)
+            g_combo_latched = false;
+    }
+    return g_combo_latched;
+}
+
 static void poll_input(void) {
     bool sprint = false;
     uint16_t b = scripted_buttons(&sprint);
@@ -208,6 +260,15 @@ static void poll_input(void) {
          * from the launcher's Controls page (defaults in settings.c) */
         InputState in;
         input_read(&g_cfg, g_pad, g_mouse_captured ? g_mouse_buttons : 0, &in);
+        if (overlay_combo())
+            in.buttons &= (uint16_t)~(PAD_SELECT | PAD_START);
+        if (g_input_hold) {
+            /* the key or button that closed the overlay is still down */
+            if (in.buttons)
+                in.buttons = 0;
+            else
+                g_input_hold = false;
+        }
         b |= in.buttons;
         if (in.lx != 0x80) lx = in.lx;
         if (in.ly != 0x80) ly = in.ly;
@@ -319,6 +380,308 @@ static void fps_tick(void) {
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* settings that apply while the game runs                             */
+
+static uint32_t cycle_scale_for(int cpu_pct) {
+    uint32_t s = (uint32_t)(32 * 100 / (cpu_pct < 50 ? 50 : cpu_pct));
+    return s < 1 ? 1 : s;
+}
+
+static float settings_aspect(const Settings *c) {
+    return c->widescreen ? (float)c->aspect_w / (float)c->aspect_h : 4.0f / 3.0f;
+}
+
+/* Apply what changed in g_cfg since the last call (overlay edits).
+ * Bindings and mouse look are read from g_cfg directly. Internal
+ * resolution, vsync and skip intro only take effect at the next start. */
+static void apply_live(void) {
+    Settings *c = &g_cfg, *a = &g_applied;
+    if (c->pgxp != a->pgxp) {
+        bool on = c->pgxp && !opt.software;
+        if (on && !g_pgxp)
+            pgxp_reset();
+        g_pgxp = on;
+        opt.no_pgxp = !c->pgxp;
+        LOGI("overlay", "precision geometry %s", on ? "on" : "off");
+    }
+    if (c->widescreen != a->widescreen || c->aspect_w != a->aspect_w ||
+        c->aspect_h != a->aspect_h) {
+        opt.aspect = settings_aspect(c);
+        if (!opt.software)
+            ws_configure(opt.aspect);
+        if (c->widescreen)
+            LOGI("overlay", "widescreen %d:%d", c->aspect_w, c->aspect_h);
+        else
+            LOGI("overlay", "widescreen off (4:3)");
+    }
+    if (c->smooth != a->smooth) {
+        opt.smooth = c->smooth;
+        render_set_smooth(c->smooth);
+        LOGI("overlay", "smooth scaling %s", c->smooth ? "on" : "off");
+    }
+    if (c->fullscreen != a->fullscreen) {
+        SDL_SetWindowFullscreen(g_win, c->fullscreen);
+        LOGI("overlay", "fullscreen %s", c->fullscreen ? "on" : "off");
+    }
+    if (c->show_fps != a->show_fps) {
+        opt.show_fps = c->show_fps;
+        if (!c->show_fps)
+            SDL_SetWindowTitle(g_win, "Alien Resurrection");
+        LOGI("overlay", "frame rate display %s", c->show_fps ? "on" : "off");
+    }
+    if (c->sprint != a->sprint || c->sprint_pct != a->sprint_pct) {
+        g_sprint_pct = c->sprint ? c->sprint_pct : 100;
+        LOGI("overlay", "sprint speed %d%%", g_sprint_pct);
+    }
+    if (c->infinite_flashlight != a->infinite_flashlight) {
+        g_infinite_flashlight = c->infinite_flashlight;
+        LOGI("overlay", "infinite flashlight %s", c->infinite_flashlight ? "on" : "off");
+    }
+    if (c->cpu_pct != a->cpu_pct) {
+        g_cycle_scale = cycle_scale_for(c->cpu_pct);
+        LOGI("overlay", "emulated CPU speed %d%%", c->cpu_pct);
+    }
+    if (c->mouse_look != a->mouse_look || c->mouse_sens != a->mouse_sens) {
+        opt.mouse_sens = c->mouse_sens;
+        LOGI("overlay", "mouse look %s, sensitivity %.1f", c->mouse_look ? "on" : "off",
+             (double)c->mouse_sens);
+    }
+    if (memcmp(c->key, a->key, sizeof c->key) || memcmp(c->pad, a->pad, sizeof c->pad))
+        LOGI("overlay", "bindings changed");
+    *a = *c;
+}
+
+/* ------------------------------------------------------------------ */
+/* scripted overlay testing (--overlay-keys / --overlay-shot)          */
+
+static void script_parse(const char *v) {
+    char buf[2048];
+    snprintf(buf, sizeof buf, "%s", v);
+    char *colon = strchr(buf, ':');
+    if (!colon) {
+        fprintf(stderr, "bad --overlay-keys %s (use FRAME:KEY,KEY,...)\n", v);
+        exit(1);
+    }
+    *colon = 0;
+    g_script.start = atol(buf);
+    for (char *tok = strtok(colon + 1, ","); tok; tok = strtok(NULL, ",")) {
+        if (g_script.n >= (int)(sizeof g_script.tok / sizeof g_script.tok[0]))
+            break;
+        typeof(g_script.tok[0]) *t = &g_script.tok[g_script.n++];
+        if (!strncmp(tok, "WAIT", 4)) {
+            t->kind = TOK_WAIT;
+            t->arg = tok[4] ? atoi(tok + 4) : 1;
+        } else if (!strcmp(tok, "SHOT")) {
+            t->kind = TOK_SHOT;
+        } else if (!strncmp(tok, "pad:", 4)) {
+            t->kind = TOK_PAD;
+            t->arg = 3;
+            char *len = strchr(tok + 4, ':');
+            if (len) {
+                *len = 0;
+                t->arg = atoi(len + 1) < 1 ? 1 : atoi(len + 1);
+            }
+            for (char *p = tok + 4; p;) {
+                char *plus = strchr(p, '+');
+                if (plus)
+                    *plus = 0;
+                SDL_GamepadButton gb = SDL_GetGamepadButtonFromString(p);
+                if (gb == SDL_GAMEPAD_BUTTON_INVALID) {
+                    fprintf(stderr, "unknown controller button '%s' in --overlay-keys\n", p);
+                    exit(1);
+                }
+                t->code |= 1 << gb;
+                p = plus ? plus + 1 : NULL;
+            }
+            g_script.uses_pad = true;
+        } else {
+            t->kind = TOK_KEY;
+            t->code = (int)SDL_GetScancodeFromName(tok);
+            if (t->code == SDL_SCANCODE_UNKNOWN) {
+                fprintf(stderr, "unknown key '%s' in --overlay-keys\n", tok);
+                exit(1);
+            }
+        }
+    }
+}
+
+/* A virtual controller driven by the "pad:" tokens. */
+static SDL_JoystickID script_attach_pad(void) {
+    SDL_VirtualJoystickDesc d;
+    SDL_INIT_INTERFACE(&d);
+    d.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    d.naxes = SDL_GAMEPAD_AXIS_COUNT;
+    d.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+    d.name = "Scripted test controller";
+    SDL_JoystickID id = SDL_AttachVirtualJoystick(&d);
+    g_script.vpad = id ? SDL_OpenJoystick(id) : NULL;
+    if (!g_script.vpad) {
+        LOGW("main", "virtual controller: %s", SDL_GetError());
+        return 0;
+    }
+    /* triggers at rest */
+    SDL_SetJoystickVirtualAxis(g_script.vpad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, -32768);
+    SDL_SetJoystickVirtualAxis(g_script.vpad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, -32768);
+    return id;
+}
+
+static void write_window_shot(void) {
+    uint8_t *rgb;
+    int w, h;
+    char path[600];
+    snprintf(path, sizeof path, "%s_%d.png", opt.overlay_shot ? opt.overlay_shot : "overlay",
+             ++g_script.shots);
+    if (render_capture_window(&rgb, &w, &h)) {
+        png_write_rgb(path, rgb, w, h);
+        free(rgb);
+        LOGI("main", "frame %ld: wrote %s", g_frame, path);
+    }
+}
+
+static bool script_done(void) { return g_script.pos >= g_script.n; }
+
+static void script_tick(void) {
+    if (script_done() || g_frame < g_script.start)
+        return;
+    typeof(g_script.tok[0]) *t = &g_script.tok[g_script.pos];
+    int k = g_script.tick++;
+    bool next = false;
+    switch (t->kind) {
+    case TOK_KEY:
+        if (k <= 1) {
+            SDL_Event e = {0};
+            e.type = k == 0 ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+            e.key.windowID = SDL_GetWindowID(g_win);
+            e.key.scancode = (SDL_Scancode)t->code;
+            e.key.key = SDL_GetKeyFromScancode(e.key.scancode, SDL_KMOD_NONE, false);
+            e.key.down = k == 0;
+            SDL_PushEvent(&e);
+        }
+        next = k >= 3;
+        break;
+    case TOK_PAD:
+        if (g_script.vpad && (k == 0 || k == t->arg))
+            for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; b++)
+                if (t->code & (1 << b))
+                    SDL_SetJoystickVirtualButton(g_script.vpad, b, k == 0);
+        next = k >= t->arg + 2;
+        break;
+    case TOK_WAIT:
+        next = k + 1 >= t->arg;
+        break;
+    case TOK_SHOT:
+        /* a few frames after the previous input, so the UI has settled */
+        if (k == 6)
+            write_window_shot();
+        next = k >= 6;
+        break;
+    }
+    if (next) {
+        g_script.pos++;
+        g_script.tick = 0;
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* in-game overlay                                                     */
+
+/* Runs the overlay until the player resumes. The emulated machine is
+ * paused meanwhile (this runs inside the vblank event), as is the audio;
+ * the last game frame stays on screen under the menu. */
+static void run_overlay(void) {
+    if (!g_gpu_ok || !g_win)
+        return;
+    if (!overlay_open(g_win, render_gpu_device(), render_window_format(), &g_cfg, &g_saved,
+                      settings_path(), &g_overlay_info)) {
+        LOGW("overlay", "cannot open the overlay (no GPU device)");
+        return;
+    }
+    LOGI("overlay", "opened at frame %ld", g_frame);
+    bool was_captured = g_mouse_captured;
+    g_mouse_captured = false;
+    g_mouse_buttons = 0;
+    SDL_SetWindowRelativeMouseMode(g_win, false);
+    if (g_audio)
+        SDL_PauseAudioStreamDevice(g_audio);
+    float aspect_before = opt.aspect;
+    render_hold_display_aspect(true);
+    render_set_overlay(overlay_render);
+
+    int result = OVERLAY_OPEN;
+    int idle = 0;
+    uint64_t next = SDL_GetTicksNS();
+    while (result == OVERLAY_OPEN) {
+        script_tick();
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+            switch (e.type) {
+            case SDL_EVENT_QUIT:
+                result = OVERLAY_QUIT;
+                break;
+            case SDL_EVENT_GAMEPAD_ADDED:
+                if (!g_pad)
+                    g_pad = SDL_OpenGamepad(e.gdevice.which);
+                break;
+            case SDL_EVENT_GAMEPAD_REMOVED:
+                if (g_pad && SDL_GetGamepadID(g_pad) == e.gdevice.which) {
+                    SDL_CloseGamepad(g_pad);
+                    g_pad = NULL;
+                }
+                break;
+            default:
+                break;
+            }
+            overlay_event(&e);
+        }
+        if (result != OVERLAY_OPEN)
+            break;
+        if (SDL_GetWindowFlags(g_win) & SDL_WINDOW_MINIMIZED) {
+            SDL_Delay(16);
+            continue;
+        }
+        result = overlay_update();
+        apply_live();
+        /* scripted test runs (--frames) must not hang in a forgotten overlay */
+        if (opt.max_frames >= 0 && g_script.n && script_done() && ++idle > 600) {
+            LOGW("overlay", "test run: closing the idle overlay");
+            result = OVERLAY_RESUME;
+        }
+        if (result != OVERLAY_OPEN)
+            break;
+        render_present();
+        uint64_t now = SDL_GetTicksNS();
+        next += g_frame_ns;
+        if (next > now)
+            SDL_DelayNS(next - now);
+        else if (now - next > 100000000ull)
+            next = now;
+    }
+    overlay_close();
+    render_set_overlay(NULL);
+    render_hold_display_aspect(false);
+    if (result == OVERLAY_QUIT) {
+        LOGI("overlay", "quit to desktop");
+        exit(0);
+    }
+    LOGI("overlay", "resumed");
+    if (g_audio)
+        SDL_ResumeAudioStreamDevice(g_audio);
+    if (was_captured) {
+        g_mouse_captured = true;
+        SDL_SetWindowRelativeMouseMode(g_win, true);
+    }
+    /* a new aspect ratio: reshape the window like at start-up */
+    if (opt.aspect != aspect_before && !g_cfg.fullscreen &&
+        !(SDL_GetWindowFlags(g_win) & (SDL_WINDOW_MAXIMIZED | SDL_WINDOW_FULLSCREEN))) {
+        int w, h;
+        SDL_GetWindowSize(g_win, &w, &h);
+        SDL_SetWindowSize(g_win, (int)((float)h * opt.aspect + 0.5f), h);
+    }
+    g_input_hold = true;
+    g_next_frame_ns = 0; /* no catching up on the paused time */
+}
+
 void platform_vblank(void) {
     g_frame++;
     if (opt.show_fps)
@@ -335,6 +698,13 @@ void platform_vblank(void) {
                 LOGI("main", "frame %ld: dumped RAM to %s", g_frame, opt.dumps[i].path);
             }
         }
+    for (int i = 0; i < opt.npokes; i++)
+        if (opt.pokes[i].frame == g_frame) {
+            uint32_t a = opt.pokes[i].addr & 0x1FFFFFu & ~(uint32_t)(opt.pokes[i].size - 1);
+            memcpy(&g_ram[a], &opt.pokes[i].value, (size_t)opt.pokes[i].size); /* little endian */
+            LOGI("main", "frame %ld: poked %08X = %X", g_frame, opt.pokes[i].addr,
+                 opt.pokes[i].value);
+        }
     if (opt.max_frames >= 0 && g_frame >= opt.max_frames) {
         LOGI("main", "reached frame limit %ld", g_frame);
         exit(0);
@@ -343,6 +713,7 @@ void platform_vblank(void) {
         poll_input();
         return;
     }
+    script_tick();
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
@@ -386,6 +757,8 @@ void platform_vblank(void) {
                 g_mouse_captured = false;
                 g_mouse_buttons = 0;
                 SDL_SetWindowRelativeMouseMode(g_win, false);
+            } else if (e.key.scancode == SDL_SCANCODE_F2 && !e.key.repeat) {
+                g_overlay_want = true;
             } else if (e.key.scancode == SDL_SCANCODE_F12) {
                 /* screenshot; Shift+F12 dumps the whole VRAM */
                 bool vram = (e.key.mod & SDL_KMOD_SHIFT) != 0;
@@ -397,6 +770,7 @@ void platform_vblank(void) {
                         (e.key.scancode == SDL_SCANCODE_F && (e.key.mod & SDL_KMOD_GUI) &&
                          (e.key.mod & SDL_KMOD_CTRL)))) {
                 g_cfg.fullscreen = !g_cfg.fullscreen;
+                g_applied.fullscreen = g_cfg.fullscreen;
                 SDL_SetWindowFullscreen(g_win, g_cfg.fullscreen);
             }
             break;
@@ -409,6 +783,11 @@ void platform_vblank(void) {
         exit(0);
     }
     poll_input();
+    if (g_overlay_want) {
+        g_overlay_want = false;
+        run_overlay();
+        poll_input();
+    }
     render_present();
     audio_rate_control();
     /* pacing: a timer caps the frame rate (at the display refresh when it is
@@ -479,8 +858,10 @@ static void parse_args(int argc, char **argv) {
                    "  --no-pgxp       original integer geometry and affine textures\n"
                    "  --cpu-speed PCT emulated CPU speed in percent (default 300; 100 = original)\n"
                    "  --sprint-speed PCT  movement speed while Shift is held (default 175; 100 = off)\n"
+                   "  --no-infinite-flashlight  the flashlight battery runs down as in the original\n"
                    "  --mouse-sens N  mouse-look sensitivity (default 6)\n"
                    "  --save-dir DIR  folder for the memory card images\n"
+                   "In game, F2 (or Select + Start held on a controller) opens the settings overlay.\n"
                    "See README.md for testing and debugging options.\n");
             exit(0);
         } else if ((!strcmp(a, "--disc") || !strcmp(a, "--cue")) && v) {
@@ -557,6 +938,8 @@ static void parse_args(int argc, char **argv) {
             opt.save_dir = v, i++;
         } else if (!strcmp(a, "--no-pgxp")) {
             g_cfg.pgxp = false;
+        } else if (!strcmp(a, "--no-infinite-flashlight")) {
+            g_cfg.infinite_flashlight = false;
         } else if (!strcmp(a, "--show-fps")) {
             g_cfg.show_fps = true;
         } else if (!strcmp(a, "--no-vsync")) {
@@ -575,6 +958,10 @@ static void parse_args(int argc, char **argv) {
             opt.launcher_page = v, i++;
         } else if (!strcmp(a, "--launcher-keys") && v) {
             opt.launcher_keys = v, i++;
+        } else if (!strcmp(a, "--overlay-keys") && v) {
+            script_parse(v), i++;
+        } else if (!strcmp(a, "--overlay-shot") && v) {
+            opt.overlay_shot = v, i++;
         } else if ((!strcmp(a, "--shot") || !strcmp(a, "--vram-shot")) && v) {
             const char *colon = strchr(v, ':');
             if (colon && opt.nshots < 64) {
@@ -600,6 +987,19 @@ static void parse_args(int argc, char **argv) {
                 opt.ndumps++;
             }
             i++;
+        } else if (!strcmp(a, "--poke") && v) {
+            /* FRAME:ADDR:VALUE[:SIZE] (address and value hex, size 1/2/4) */
+            long f;
+            unsigned addr, val;
+            int size = 4;
+            if (sscanf(v, "%ld:%x:%x:%d", &f, &addr, &val, &size) < 3 ||
+                (size != 1 && size != 2 && size != 4)) {
+                fprintf(stderr, "bad --poke %s (use FRAME:ADDR:VALUE[:SIZE])\n", v);
+                exit(1);
+            }
+            if (opt.npokes < 32)
+                opt.pokes[opt.npokes++] = (typeof(opt.pokes[0])){f, addr, val, size};
+            i++;
         } else if (!strcmp(a, "--press") && v) {
             /* FRAME:BUTTON[:LEN] */
             char buf[64];
@@ -623,7 +1023,7 @@ static void parse_args(int argc, char **argv) {
 
 /* Runtime values from the settings (after the launcher). */
 static void apply_settings(const Settings *c) {
-    opt.aspect = c->widescreen ? (float)c->aspect_w / (float)c->aspect_h : 4.0f / 3.0f;
+    opt.aspect = settings_aspect(c);
     opt.render_scale = c->internal_scale;
     opt.no_pgxp = !c->pgxp;
     opt.no_vsync = !c->vsync;
@@ -631,9 +1031,8 @@ static void apply_settings(const Settings *c) {
     opt.show_fps = c->show_fps;
     opt.mouse_sens = c->mouse_sens;
     g_sprint_pct = c->sprint ? c->sprint_pct : 100;
-    g_cycle_scale = (uint32_t)(32 * 100 / (c->cpu_pct < 50 ? 50 : c->cpu_pct));
-    if (g_cycle_scale < 1)
-        g_cycle_scale = 1;
+    g_infinite_flashlight = c->infinite_flashlight;
+    g_cycle_scale = cycle_scale_for(c->cpu_pct);
     if (!opt.exe && c->skip_intro)
         opt.exe = "ALIEN.BIN";
 }
@@ -649,11 +1048,10 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--save-dir") && i + 1 < argc)
             opt.save_dir = argv[++i];
     }
-    static Settings saved;
     if (!headless) {
         settings_load(&g_cfg, settings_path());
     }
-    saved = g_cfg;
+    g_saved = g_cfg;
     parse_args(argc, argv);
     if (!g_cfg.disc[0]) {
         /* convenience default: a disc image folder next to the binary's cwd */
@@ -691,7 +1089,7 @@ int main(int argc, char **argv) {
             launcher_debug_shot(opt.launcher_shot, opt.launcher_page);
         if (opt.launcher_keys)
             launcher_debug_keys(opt.launcher_keys);
-        if (!launcher_run(g_win, &g_cfg, &saved, settings_path()))
+        if (!launcher_run(g_win, &g_cfg, &g_saved, settings_path()))
             return 0;
     }
     apply_settings(&g_cfg);
@@ -709,6 +1107,12 @@ int main(int argc, char **argv) {
     ws_configure(opt.software ? 4.0f / 3.0f : opt.aspect);
     /* precision geometry also needs the hardware renderer */
     g_pgxp = !opt.software && !opt.no_pgxp;
+    /* the in-game overlay applies later changes relative to these */
+    g_applied = g_cfg;
+    g_overlay_info = (OverlayInfo){.software = opt.software,
+                                   .running_scale = g_cfg.internal_scale,
+                                   .running_vsync = g_cfg.vsync,
+                                   .running_skip_intro = g_cfg.skip_intro};
     if (g_win) {
         if (g_cfg.fullscreen)
             SDL_SetWindowFullscreen(g_win, true);
@@ -728,7 +1132,9 @@ int main(int argc, char **argv) {
         /* a controller that was already connected sends no "added" event */
         int n = 0;
         SDL_JoystickID *pads = SDL_GetGamepads(&n);
-        if (n > 0)
+        if (g_script.uses_pad)
+            g_pad = SDL_OpenGamepad(script_attach_pad());
+        else if (n > 0)
             g_pad = SDL_OpenGamepad(pads[0]);
         SDL_free(pads);
     }

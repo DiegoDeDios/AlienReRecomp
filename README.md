@@ -21,7 +21,9 @@ You need your own copy of the game disc image (`.cue` + `.bin` tracks) in
 | Steady 60 fps (CPU headroom), vsync without tearing | working |
 | Precision geometry (no vertex wobble, perspective-correct textures) | working (hardware renderer) |
 | Sprint (hold Shift) | working |
+| Infinite flashlight (optional) | working |
 | Launcher: disc selection, settings, control rebinding | working |
+| In-game overlay (F2 / Select+Start): settings, controls, quit | working |
 | Software renderer (reference) | working |
 | FMV (STR/MDEC), XA audio, CD-DA | working (audio needs listening tests) |
 | Memory card saves (`bu00:`): save, load, overwrite | working |
@@ -59,8 +61,8 @@ The launcher opens first:
   your disc. No game data ships with the port.
 * **Settings**: widescreen and aspect ratio, internal resolution,
   precision geometry (PGXP), smooth scaling, vsync, fullscreen, frame rate
-  display, sprint and sprint speed, skip intro movies, frame rate boost
-  (emulated CPU speed).
+  display, sprint and sprint speed, infinite flashlight, skip intro movies,
+  frame rate boost (emulated CPU speed).
 * **Controls**: rebind every PlayStation button, the keyboard stick
   directions, sprint and fast forward, for keyboard/mouse (two keys per
   action) and controller. Mouse look and sensitivity are there too.
@@ -69,6 +71,12 @@ The launcher opens first:
 Everything is navigable with the mouse, the keyboard (arrows, Enter, Esc)
 or a controller (D-pad, A, B). Settings are saved to `config.ini` next to
 the memory cards (see below).
+
+While playing, **F2** (or holding **Select + Start** on a controller for a
+moment) pauses the game and opens the same Settings and Controls pages over
+it, plus **Quit to desktop**. Changes apply immediately, except internal
+resolution, VSync and skip intro movies, which are marked "applies on next
+start". F2, Esc, Start or Circle/B resumes.
 
 Command-line options override `config.ini` for one run (useful for
 testing):
@@ -84,15 +92,18 @@ testing):
 | `--no-vsync` | present without vsync (lowest latency, may tear) |
 | `--no-pgxp` | original PS1 geometry: integer vertices and affine (warping) textures |
 | `--sprint-speed PCT` | player speed while sprinting (default 175; 100 turns sprint off) |
+| `--no-infinite-flashlight` | the flashlight battery runs down and recharges as in the original |
 | `--fullscreen`, `--show-fps`, `--sharp`, `--mouse-sens N` | as in the launcher |
 | `--save-dir DIR` | folder for memory cards and `config.ini` (default below) |
 | `--renderer sw` | use the software rasterizer (pixel-accurate reference) |
 | `--headless --frames N --shot F:file.png` | run without a window, write screenshots (ignores `config.ini`) |
 | `--press F:button[:len]`, `--stick F:len:lx:ly:rx:ry`, `--fuzz F:seed` | scripted / random input (testing; `sprint` is a button name too) |
 | `--launcher-shot file.png [--launcher-page settings\|controls]`, `--launcher-keys K1,K2,…` | render a launcher page to PNG / drive it with scripted keys (testing, docs) |
+| `--overlay-keys F:T1,T2,…`, `--overlay-shot PREFIX` | from frame F, drive the in-game overlay with tokens: SDL key names (`F2`, `Down`, `Return`…), `pad:back+start[:ticks]` (a virtual controller), `WAITn`, and `SHOT` (writes the window with the overlay to `PREFIX_N.png`) |
 | `--wav file.wav` | record the audio output |
 | `--verify ADDR` | lockstep-check a recompiled function against the interpreter |
 | `--watch ADDR[:LEN]` | log every store into a RAM range (debugging) |
+| `--poke F:ADDR:VALUE[:SIZE]` | write a value (hex; 1, 2 or 4 bytes, default 4) into RAM at frame F (testing) |
 | `--trace-bios`, `--log 3` | trace BIOS calls / verbose hardware logging |
 
 The game uses the DualShock "Dual Stick" scheme (left stick moves/strafes,
@@ -117,14 +128,17 @@ changeable in **Controls**):
 | V / B (middle click) | L3 / R3 | centre view / quick turn |
 | ` (backtick) | | fast forward |
 
-Fixed keys: F11 or Cmd+Ctrl+F toggles fullscreen, F12 takes a screenshot
-(Shift+F12 dumps VRAM), F1 releases the mouse. Quit with Cmd+Q or by
-closing the window.
+Fixed keys: F2 opens the settings overlay, F11 or Cmd+Ctrl+F toggles
+fullscreen, F12 takes a screenshot (Shift+F12 dumps VRAM), F1 releases the
+mouse. These can't be bound to game actions. Quit with Cmd+Q, by closing the
+window, or with Quit to desktop in the overlay.
 
 Controllers are detected automatically; their sticks always drive the
 analog sticks and the buttons follow the Controls page (default: the
 PlayStation layout, left stick click = sprint, which latches until the stick
-returns to centre; the game's L3 "centre view" is on V).
+returns to centre; the game's L3 "centre view" is on V). Holding Select and
+Start together opens the overlay; neither button reaches the game then, so
+the game's own pause menu stays closed.
 
 Saves are stored as standard 128 KiB memory card images in
 `~/Library/Application Support/AlienResurrectionPort/AlienResurrection/`,

@@ -3,3 +3,4 @@
 800a81bc wrap  # screen-space quad subdivision (skipped for PGXP-precise quads)
 8005e8e8 wrap  # player movement speed helper (sprint)
 80020350 wrap  # main: adjust option defaults before the game starts
+800625cc wrap  # flashlight update (infinite flashlight)

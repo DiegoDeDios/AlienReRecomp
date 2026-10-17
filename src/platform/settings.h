@@ -56,6 +56,7 @@ typedef struct Settings {
     /* gameplay */
     bool sprint;
     int sprint_pct;
+    bool infinite_flashlight;  /* the flashlight battery never runs down */
     int cpu_pct;             /* emulated CPU speed (frame rate headroom) */
     /* input */
     bool mouse_look;
@@ -82,6 +83,8 @@ typedef struct InputState {
 } InputState;
 void input_read(const Settings *s, SDL_Gamepad *pad, uint32_t mouse_buttons,
                 InputState *out);
+/* Is controller binding `code` (button or PAD_TRIGGER_*) held on `pad`? */
+bool input_pad_held(SDL_Gamepad *pad, int code);
 
 #ifdef __cplusplus
 }

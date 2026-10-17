@@ -18,6 +18,14 @@ static inline PgxpVtx *mem_slot(uint32_t a) {
     return NULL;
 }
 
+void pgxp_reset(void) {
+    /* z = 0 marks an entry as unknown */
+    memset(g_gte, 0, sizeof g_gte);
+    memset(g_gpr, 0, sizeof g_gpr);
+    memset(g_ram_sh, 0, sizeof g_ram_sh);
+    memset(g_spad_sh, 0, sizeof g_spad_sh);
+}
+
 void pgxp_gte_push(float x, float y, float z, uint32_t raw, bool valid) {
     g_gte[0] = g_gte[1];
     g_gte[1] = g_gte[2];

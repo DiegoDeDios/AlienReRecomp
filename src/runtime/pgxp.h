@@ -23,6 +23,11 @@ typedef struct PgxpVtx {
 
 extern bool g_pgxp;
 
+/* Forget all shadow values. Needed when tracking is switched back on while
+ * the game runs: entries left from before could still match the raw value
+ * in RAM but describe an older vertex. */
+void pgxp_reset(void);
+
 /* GTE side */
 void pgxp_gte_push(float x, float y, float z, uint32_t raw, bool valid);
 void pgxp_gte_set(int reg, const PgxpVtx *v);

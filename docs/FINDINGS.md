@@ -147,6 +147,48 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   packet (`a0`) into `2^a2 × 2^a2` quads by averaging corner positions,
   colours and UVs.
 
+## Inventory and items (gameplay)
+
+* Text bank `TEXT%c%c.TUK` (`TEXTUK.TUK` in `PACK.BIN`) is loaded at
+  `0x800BC1B0` (loader `0x800301F0`): `u32 count` (322), then `count`
+  offsets from the start of the file to NUL-terminated strings, which the
+  loader turns into pointers in place (string `i` = `[0x800BC1B4 + 4i]`).
+  Item names start at index 27 (`PISTOL`); also there: the hidden
+  `CHEAT MENU` items (`ALL GUNS`, `INFINITE AMMO`, `INFINITE HEALTH`,
+  level/section select).
+* Item codes (name = text index `c − 21`): weapons 48–55, ammo 56–63,
+  medikits 64–66, keycards 67–73 (names per level from a table at
+  `0x80094138`), fire extinguisher 74, detonator 75, flashlight 76, a
+  second `FLASHLIGHT` 77, battery 78, autodoc 79, save point 80, motion
+  tracker 81, text communicator 82.
+* Inventory object: pointer at `gp+0x47C` (`0x800A49F0`), the static block
+  `0x8011BCB8` (set up per level by `0x8005281C`). `+0x00` selected item
+  code (s16), `+0x04`/`+0x08` owned-item bit masks (bit `c − 48`), `+0x0C +
+  2 × (c − 48)` amount of item `c` (ammo, count or charge).
+  `0x80052410(c)` = owned, `0x80052444(c)` = amount or −2 if not owned,
+  `0x8005248C(c, n)` gives an item. Level setup gives the flashlight from
+  level 2 on (level number byte `0x800A4612`).
+* Per-item maximum table at `0x800A7A44 + (c + 57) × 4` (−1 = no maximum;
+  76 and 77: 1200); the HUD shows amounts with a maximum as a percentage.
+  The same table area holds gameplay constants, e.g. `+0xCC` flashlight
+  capacity (1200), `+0xD0..+0xE0` flashlight flicker parameters.
+* HUD (`0x80034BA4` per frame): `0x80052AEC` rebuilds two lists from the
+  inventory, weapons at `0x8010C430` and items at `0x8010C588` (`int
+  selected; int count; 8-byte slots {u16 code; …; s16 amount}`), and
+  `0x80033AA4` draws them; the motion tracker is `0x800343FC`.
+* Use item (`0x80052FA0`, from the player update when the gameplay command
+  bit `0x0004` — Circle — is pressed): jump table at `0x800A2F34` indexed
+  by `code − 64`. The flashlight case (`0x800530B4`) switches the light off
+  if it is on, or, when the battery is not empty, creates a light object
+  (`0x8001C6FC`) and stores it at player state `+0x40` (player state =
+  player `+0x64` = `[gp+0x478]`), setting flag `0x1000` in state `+0x3C`.
+* Flashlight update `0x800625CC(player, state)`, every frame: with a light
+  on, battery (`inventory+0x44`) −= vblanks elapsed; at 0 the light is
+  removed. The light's intensity pulses between 640 and 768 (state
+  `+0x44`/`+0x46`) plus a random 0–24, independent of the charge. With the
+  light off the battery recharges by 2 per vblank up to 1200
+  (`0x800367B4(x, step, lo, hi)` = clamp(x + step × vblanks, lo, hi)).
+
 ## Memory card and options
 
 * Save files are `bu00:BASLUS-00633A` + a 7-character suffix, 2 blocks
