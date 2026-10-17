@@ -12,6 +12,9 @@ on:
   workflow_dispatch:
   push:
     tags: ["v*"]
+    # builds only (no release) while the workflow is not on the default
+    # branch yet, where "Run workflow" becomes available; remove after merge
+    branches: ["feature/code-free-release"]
 
 permissions:
   contents: write
