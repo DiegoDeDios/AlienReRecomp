@@ -189,6 +189,8 @@ enum {
 };
 void pad_set_buttons(int port, uint16_t pressed);
 void pad_set_analog(int port, uint8_t rx, uint8_t ry, uint8_t lx, uint8_t ly);
+/* the right stick as last set by the frontend (0x80 = centre) */
+void pad_get_right_stick(int port, uint8_t *rx, uint8_t *ry);
 
 /* ---- game enhancements (native.c) ---- */
 extern bool g_sprint;      /* sprint input held this frame */

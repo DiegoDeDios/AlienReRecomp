@@ -15,11 +15,13 @@
  */
 #include <SDL3/SDL.h>
 #include <dirent.h>
+#include <math.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 
 #include "../hw/gpu.h"
 #include "../render/render.h"
+#include "../runtime/camera.h"
 #include "../runtime/psx.h"
 #include "../runtime/pgxp.h"
 #include "../runtime/widescreen.h"
@@ -49,6 +51,8 @@ static struct {
     int npresses;
     struct { long frame; long len; int lx, ly, rx, ry; } sticks[64];
     int nsticks;
+    struct { long frame; long len; int dx, dy; } mice[32];
+    int nmice;
     float scale;       /* window scale */
     int render_scale;  /* internal resolution multiplier */
     bool software;
@@ -183,17 +187,24 @@ static uint16_t scripted_buttons(bool *sprint) {
     return b;
 }
 
-/* mouse look: relative motion accumulated between frames drives the right
- * analog stick (the game's look/turn input) */
+/* mouse look: relative motion accumulated between vblanks turns the camera
+ * directly (camera.h), MOUSE_LOOK_UNITS game angle units (4096 = a full
+ * turn) per count at sensitivity 1 */
+#define MOUSE_LOOK_UNITS 0.2f
 static float g_mouse_dx, g_mouse_dy;
 static bool g_mouse_captured;
 static uint32_t g_mouse_buttons;
 
-static uint8_t stick_add(uint8_t base, float delta) {
-    float v = (float)base + delta;
-    if (v < 0) v = 0;
-    if (v > 255) v = 255;
-    return (uint8_t)v;
+static void mouse_look(float dx, float dy) {
+    /* dropped when the game has not turned for a few vblanks (menus,
+     * pause), so it is not applied later in one go */
+    if (++g_cam_mouse_age > 4)
+        g_cam_mouse_x = g_cam_mouse_y = 0;
+    float k = opt.mouse_sens * MOUSE_LOOK_UNITS;
+    g_cam_mouse_x += dx * k;
+    g_cam_mouse_y += dy * k;
+    if (fabsf(g_cam_mouse_x) > 4096) g_cam_mouse_x = copysignf(4096, g_cam_mouse_x);
+    if (fabsf(g_cam_mouse_y) > 4096) g_cam_mouse_y = copysignf(4096, g_cam_mouse_y);
 }
 
 /* Select+Start held together on the controller (the buttons bound to the
@@ -225,6 +236,10 @@ static void poll_input(void) {
     bool sprint = false;
     uint16_t b = scripted_buttons(&sprint);
     uint8_t lx = 0x80, ly = 0x80, rx = 0x80, ry = 0x80;
+    float mdx = 0, mdy = 0;
+    for (int i = 0; i < opt.nmice; i++)
+        if (g_frame >= opt.mice[i].frame && g_frame < opt.mice[i].frame + opt.mice[i].len)
+            mdx += (float)opt.mice[i].dx, mdy += (float)opt.mice[i].dy;
     for (int i = 0; i < opt.nsticks; i++) {
         if (g_frame >= opt.sticks[i].frame &&
             g_frame < opt.sticks[i].frame + opt.sticks[i].len) {
@@ -277,12 +292,11 @@ static void poll_input(void) {
         if (in.ry != 0x80) ry = in.ry;
         sprint |= in.sprint;
         g_turbo = in.fast_forward;
-        if (g_mouse_captured && g_cfg.mouse_look) {
-            rx = stick_add(rx, g_mouse_dx * opt.mouse_sens);
-            ry = stick_add(ry, g_mouse_dy * opt.mouse_sens);
-        }
+        if (g_mouse_captured && g_cfg.mouse_look)
+            mdx += g_mouse_dx, mdy += g_mouse_dy;
         g_mouse_dx = g_mouse_dy = 0;
     }
+    mouse_look(mdx, mdy);
     pad_set_buttons(0, b);
     pad_set_analog(0, rx, ry, lx, ly);
     g_sprint = sprint;
@@ -393,6 +407,13 @@ static float settings_aspect(const Settings *c) {
     return c->widescreen ? (float)c->aspect_w / (float)c->aspect_h : 4.0f / 3.0f;
 }
 
+static void apply_camera(const Settings *c) {
+    g_cam_stick = c->cam_stick;
+    g_cam_stick_speed = c->stick_speed;
+    g_cam_stick_dead_zone = c->stick_dead_zone;
+    g_cam_stick_curve = g_stick_curves[c->stick_curve].exponent;
+}
+
 /* Apply what changed in g_cfg since the last call (overlay edits).
  * Bindings and mouse look are read from g_cfg directly. Internal
  * resolution, vsync and skip intro only take effect at the next start. */
@@ -460,6 +481,13 @@ static void apply_live(void) {
         opt.mouse_sens = c->mouse_sens;
         LOGI("overlay", "mouse look %s, sensitivity %.1f", c->mouse_look ? "on" : "off",
              (double)c->mouse_sens);
+    }
+    if (c->cam_stick != a->cam_stick || c->stick_speed != a->stick_speed ||
+        c->stick_dead_zone != a->stick_dead_zone || c->stick_curve != a->stick_curve) {
+        apply_camera(c);
+        LOGI("overlay", "right stick: %s, speed %d%%, dead zone %d%%, curve %s",
+             c->cam_stick ? "responsive" : "original", c->stick_speed, c->stick_dead_zone,
+             g_stick_curves[c->stick_curve].id);
     }
     if (memcmp(c->key, a->key, sizeof c->key) || memcmp(c->pad, a->pad, sizeof c->pad))
         LOGI("overlay", "bindings changed");
@@ -615,6 +643,7 @@ static void run_overlay(void) {
     bool was_captured = g_mouse_captured;
     g_mouse_captured = false;
     g_mouse_buttons = 0;
+    g_cam_mouse_x = g_cam_mouse_y = 0;
     SDL_SetWindowRelativeMouseMode(g_win, false);
     if (g_audio)
         SDL_PauseAudioStreamDevice(g_audio);
@@ -884,6 +913,8 @@ static void parse_args(int argc, char **argv) {
                    "  --enemy-damage PCT|GROUP=PCT  damage taken from enemies (default 100;\n"
                    "                  groups as in config.ini [enemy_damage]; repeatable)\n"
                    "  --mouse-sens N  mouse-look sensitivity (default 6)\n"
+                   "  --original-stick  right stick through the game's own input path\n"
+                   "                  (two frames of delay, 38%% dead zone)\n"
                    "  --save-dir DIR  folder for the memory card images\n"
                    "In game, F2 (or Select + Start held on a controller) opens the settings overlay.\n"
                    "See README.md for testing and debugging options.\n");
@@ -947,6 +978,15 @@ static void parse_args(int argc, char **argv) {
             i++;
         } else if (!strcmp(a, "--mouse-sens") && v) {
             g_cfg.mouse_sens = (float)atof(v), i++;
+        } else if (!strcmp(a, "--original-stick")) {
+            g_cfg.cam_stick = false;
+        } else if (!strcmp(a, "--mouse") && v) {
+            /* FRAME:LEN:DX:DY scripted mouse motion per vblank (counts) */
+            long f, len;
+            int dx, dy;
+            if (sscanf(v, "%ld:%ld:%d:%d", &f, &len, &dx, &dy) == 4 && opt.nmice < 32)
+                opt.mice[opt.nmice++] = (typeof(opt.mice[0])){f, len, dx, dy};
+            i++;
         } else if (!strcmp(a, "--cpu-speed") && v) {
             /* percent of the original CPU throughput */
             int pct = atoi(v);
@@ -1088,6 +1128,7 @@ static void apply_settings(const Settings *c) {
     g_cycle_scale = cycle_scale_for(c->cpu_pct);
     g_enemy_damage_pct = c->enemy_damage_pct;
     memcpy(g_enemy_damage_group_pct, c->enemy_damage_group_pct, sizeof g_enemy_damage_group_pct);
+    apply_camera(c);
     if (!opt.exe && c->skip_intro)
         opt.exe = "ALIEN.BIN";
 }

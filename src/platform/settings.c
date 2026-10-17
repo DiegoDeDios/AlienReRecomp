@@ -99,6 +99,12 @@ const EnemyGroupInfo g_enemy_groups[DMG_GROUP_COUNT] = {
                   "Acid that sprays from aliens when they are hit close to you."},
 };
 
+const struct StickCurve g_stick_curves[STICK_CURVES] = {
+    {"Linear", "linear", 1.0f},
+    {"Smooth", "smooth", 1.5f},
+    {"Precise", "precise", 2.2f},
+};
+
 void settings_defaults(Settings *s) {
     memset(s, 0, sizeof *s);
     s->skip_intro = false;
@@ -117,6 +123,10 @@ void settings_defaults(Settings *s) {
         s->enemy_damage_group_pct[g] = 100;
     s->mouse_look = true;
     s->mouse_sens = 6.0f;
+    s->cam_stick = true;
+    s->stick_speed = 150;
+    s->stick_dead_zone = 10;
+    s->stick_curve = 1;
     settings_default_bindings(s);
 }
 
@@ -309,6 +319,15 @@ bool settings_load(Settings *s, const char *path) {
         } else if (!strcmp(sect, "mouse")) {
             if (!strcmp(k, "mouse_look")) s->mouse_look = parse_bool(v);
             else if (!strcmp(k, "sensitivity")) s->mouse_sens = (float)atof(v);
+        } else if (!strcmp(sect, "camera")) {
+            if (!strcmp(k, "responsive_stick")) s->cam_stick = parse_bool(v);
+            else if (!strcmp(k, "stick_speed")) s->stick_speed = clampi(atoi(v), 50, 300);
+            else if (!strcmp(k, "stick_dead_zone")) s->stick_dead_zone = clampi(atoi(v), 0, 40);
+            else if (!strcmp(k, "stick_curve")) {
+                for (int i = 0; i < STICK_CURVES; i++)
+                    if (!strcmp(v, g_stick_curves[i].id))
+                        s->stick_curve = i;
+            }
         } else if (!strcmp(sect, "keyboard")) {
             /* "action" = first slot, "action.2" = second slot; actions
              * not listed keep their default bindings */
@@ -352,6 +371,10 @@ bool settings_save(const Settings *s, const char *path) {
     fprintf(f, "\n");
     fprintf(f, "[mouse]\nmouse_look = %s\nsensitivity = %.2f\n\n", tf[s->mouse_look],
             (double)s->mouse_sens);
+    fprintf(f, "[camera]\nresponsive_stick = %s\nstick_speed = %d\nstick_dead_zone = %d\n"
+               "stick_curve = %s\n\n",
+            tf[s->cam_stick], s->stick_speed, s->stick_dead_zone,
+            g_stick_curves[s->stick_curve].id);
     fprintf(f, "[keyboard]\n");
     char name[64];
     for (int a = 0; a < ACT_COUNT; a++)

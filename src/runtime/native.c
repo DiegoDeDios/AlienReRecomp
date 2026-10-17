@@ -2,6 +2,10 @@
  * Native replacements for recompiled functions (listed in
  * tools/overrides_*.txt, which the recompiler leaves out).
  */
+#include <math.h>
+#include <stdlib.h>
+
+#include "camera.h"
 #include "enemy_damage.h"
 #include "pgxp.h"
 #include "psx.h"
@@ -197,6 +201,126 @@ void ALIEN_800519D0(CPU *c) {
             LOGD("damage", "acid: %d -> %d", (int)a, (int)c->r[5]);
     }
     ALIEN_800519D0__orig(c);
+}
+
+/* Camera. Each frame the main loop processes the pads (0x80031594) and
+ * builds the gameplay command block at 0x800BDBE0 (0x80032530): +0x00 turn
+ * and +0x04 look, -4096..4096 (full right / full up = -4096). The player
+ * update (0x8005ECBC) then turns by turn * rate >> 12, rate = TURN SPEED
+ * (options +0x11) * 27 / 8 + 13, or * 5 / 2 + 10 while swimming (stance
+ * 3), times the frame step; and looks up/down (camera pitch, clamped to
+ * +-600) by look * rate >> 12, rate = LOOK SPEED (+0x12) * 11 / 4 + 16 --
+ * when +0x18 is set (dual-stick layouts); otherwise the stick sets a target
+ * pitch. Controller input reaches the command block two frames late (libpad
+ * buffering, then the next frame's processing), averaged over samples, and
+ * only past a dead zone of 38% of the stick's travel at the default STICK
+ * DEAD ZONE (+0x10). The wrapper puts in the right stick as read at the last
+ * vblank, with its own dead zone, curve and speed, and adds mouse look
+ * converted with the inverse of the rate, so the camera turns by exactly
+ * the mouse movement. */
+#define CMD_TURN       0x800BDBE0u
+#define CMD_LOOK       0x800BDBE4u
+#define CMD_LOOK_RATE  0x800BDBF8u
+#define CMD_VARIANT_A  0x800BDC20u /* select the control type's alternate */
+#define CMD_VARIANT_B  0x800BDC28u /* axis mappings */
+#define PAD0_AXES      0x800BDAF0u /* processed: left X, left Y, right X, right Y */
+#define CONTROL_CONFIG 0x800A4704u /* gp+0x190; +0xC8: command slot of each axis */
+#define OPTIONS        0x80096BBCu /* +0x0E invert Y, +0x11/+0x12 turn/look speed */
+#define FRAME_STEP     0x800A86A4u /* gp+0x4130: vblanks since the last frame */
+
+float g_cam_mouse_x, g_cam_mouse_y;
+int g_cam_mouse_age;
+bool g_cam_stick = true;
+int g_cam_stick_dead_zone = 10;
+float g_cam_stick_curve = 1.5f;
+int g_cam_stick_speed = 150;
+
+/* command slot of analog axis `axis` in the current control type */
+static int axis_slot(int axis) {
+    uint32_t cfg = mem_r32(CONTROL_CONFIG);
+    if (!cfg)
+        return -1;
+    int v = mem_r32(CMD_VARIANT_A) ? 1 : mem_r32(CMD_VARIANT_B) ? 2 : 0;
+    return (int32_t)mem_r32(cfg + 0xC8 + (uint32_t)(v * 16 + axis * 4));
+}
+
+/* The fresh stick value replaces what the game made of the same axis (it
+ * equals the processed, older value); anything else mapped to the slot,
+ * such as the d-pad, wins when larger, as in the game's own builder. */
+static void stick_to_slot(uint32_t slot, int axis, int32_t v) {
+    int32_t game = (int32_t)mem_r32(slot);
+    int32_t old = (int32_t)mem_r32(PAD0_AXES + (uint32_t)axis * 4);
+    if (game != old && abs(game) > abs(v))
+        return;
+    mem_w32(slot, (uint32_t)v);
+}
+
+static void camera_stick(void) {
+    uint8_t rx, ry;
+    pad_get_right_stick(0, &rx, &ry);
+    float x = (float)(rx - 128) / 127.0f, y = (float)(ry - 128) / 127.0f;
+    x = x < -1 ? -1 : x > 1 ? 1 : x;
+    y = y < -1 ? -1 : y > 1 ? 1 : y;
+    float m = sqrtf(x * x + y * y), dz = (float)g_cam_stick_dead_zone / 100.0f, s = 0;
+    if (m > dz) {
+        float t = (m - dz) / (1 - dz);
+        s = powf(t > 1 ? 1 : t, g_cam_stick_curve) / m; /* radial dead zone and curve */
+    }
+    float k = 4096.0f * (float)g_cam_stick_speed / 100.0f * s;
+    int32_t turn = (int32_t)lroundf(-x * k), look = (int32_t)lroundf(y * k);
+    if (mem_r8(OPTIONS + 0x0E))
+        look = -look;
+    if (axis_slot(2) == 0)
+        stick_to_slot(CMD_TURN, 2, turn);
+    if (axis_slot(3) == 1)
+        stick_to_slot(CMD_LOOK, 3, look);
+}
+
+/* command value that changes the game's (cmd * rate) >> 12 by exactly
+ * `delta` (the smallest one that rounds down to the target) */
+static int32_t cmd_for_delta(int32_t cmd, int rate, int32_t delta) {
+    int64_t p = (int64_t)cmd * rate;
+    int64_t t = (p >= 0 ? p / 4096 : -((-p + 4095) / 4096)) + delta; /* floor + delta */
+    int64_t a = t * 4096;
+    return (int32_t)(a >= 0 ? (a + rate - 1) / rate : a / rate); /* ceil(a / rate) */
+}
+
+static void camera_mouse(uint32_t player) {
+    float mx = g_cam_mouse_x, my = g_cam_mouse_y;
+    g_cam_mouse_age = 0;
+    if (mx == 0 && my == 0)
+        return;
+    int fs = (int32_t)mem_r32(FRAME_STEP);
+    fs = fs < 1 ? 1 : fs;
+    int ts = (int)mem_r8(OPTIONS + 0x11), ls = (int)mem_r8(OPTIONS + 0x12);
+    bool swim = (int8_t)mem_r8(player + 0x171) == 3;
+    int turn_rate = (swim ? ((ts * 5) >> 1) + 10 : ((ts * 27) >> 3) + 13) * fs;
+    int look_rate = (swim ? ((ts * 5) >> 1) + 10 : ((ls * 11) >> 2) + 16) * fs;
+
+    /* whole units now, the rest next frame; turning right lowers the yaw */
+    int32_t d = (int32_t)lroundf(mx);
+    mem_w32(CMD_TURN, (uint32_t)cmd_for_delta((int32_t)mem_r32(CMD_TURN), turn_rate, -d));
+    g_cam_mouse_x = mx - (float)d;
+
+    if (swim || mem_r32(CMD_LOOK_RATE)) {
+        float inv = mem_r8(OPTIONS + 0x0E) ? -1.0f : 1.0f; /* the game's Invert Y */
+        int32_t l = (int32_t)lroundf(my * inv);
+        mem_w32(CMD_LOOK, (uint32_t)cmd_for_delta((int32_t)mem_r32(CMD_LOOK), look_rate, l));
+        g_cam_mouse_y = my - (float)l * inv;
+    } else {
+        g_cam_mouse_y = 0; /* the stick sets a target pitch here: no mouse look */
+    }
+}
+
+void ALIEN_8005ECBC__orig(CPU *c);
+void ALIEN_8005ECBC(CPU *c) {
+    uint32_t obj = c->r[4];
+    if (obj && obj == mem_r32(PLAYER_OBJ_PTR) && mem_r32(DEMO_PLAYBACK) == 0) {
+        if (g_cam_stick)
+            camera_stick();
+        camera_mouse(obj);
+    }
+    ALIEN_8005ECBC__orig(c);
 }
 
 /* main (0x80020350). Option defaults live in the options block at

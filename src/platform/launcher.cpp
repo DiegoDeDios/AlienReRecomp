@@ -923,6 +923,8 @@ void draw_settings(ImDrawList *dl) {
         memcpy(d.key, c->key, sizeof d.key);
         memcpy(d.pad, c->pad, sizeof d.pad);
         d.mouse_look = c->mouse_look, d.mouse_sens = c->mouse_sens;
+        d.cam_stick = c->cam_stick, d.stick_speed = c->stick_speed;
+        d.stick_dead_zone = c->stick_dead_zone, d.stick_curve = c->stick_curve;
         bool fs_changed = d.fullscreen != c->fullscreen;
         *c = d;
         *L.saved = d;
@@ -987,15 +989,46 @@ void draw_controls(ImDrawList *dl) {
                       ImGuiWindowFlags_NoBackground);
     L.desc = nullptr;
 
-    section("MOUSE");
+    section("CAMERA");
     if (toggle("Mouse look", &c->mouse_look,
-               "Mouse movement drives the right stick (look / turn). Click the game window to "
-               "capture the mouse; F1 releases it."))
+               "The mouse turns the camera directly, without the delay and speed limit of the "
+               "game's stick input. Click the game window to capture the mouse; F1 releases "
+               "it."))
         mark(&c->mouse_look);
     ImGui::BeginDisabled(!c->mouse_look);
     if (slider("Mouse sensitivity", &c->mouse_sens, 1, 20, 0.5f, "%.1f", "How far the view turns per "
                "mouse movement."))
         mark(&c->mouse_sens);
+    ImGui::EndDisabled();
+    if (toggle("Responsive stick", &c->cam_stick,
+               "The camera stick (the right stick, and the look keys) is read directly: no "
+               "delay and no 38% dead zone. Off: the game's original stick handling."))
+        mark(&c->cam_stick);
+    ImGui::BeginDisabled(!c->cam_stick);
+    float ss = (float)c->stick_speed;
+    if (slider("Stick look speed", &ss, 50, 300, 10, "%.0f%%",
+               "Turning and looking speed with the stick fully pushed, relative to the game's "
+               "own (its Turn speed and Look speed options still apply).")) {
+        c->stick_speed = (int)ss;
+        mark(&c->stick_speed);
+    }
+    float sdz = (float)c->stick_dead_zone;
+    if (slider("Stick dead zone", &sdz, 0, 40, 2, "%.0f%%",
+               "How far the stick must move before the camera does. Raise it if the view "
+               "drifts with the stick at rest.")) {
+        c->stick_dead_zone = (int)sdz;
+        mark(&c->stick_dead_zone);
+    }
+    static const char *const curves[STICK_CURVES] = {g_stick_curves[0].name,
+                                                     g_stick_curves[1].name,
+                                                     g_stick_curves[2].name};
+    int sci = c->stick_curve;
+    if (choice("Stick response", &sci, curves, STICK_CURVES,
+               "Linear: speed follows the stick. Smooth and Precise: slower near the centre for "
+               "fine aiming, full speed at the edge.")) {
+        c->stick_curve = sci;
+        mark(&c->stick_curve);
+    }
     ImGui::EndDisabled();
 
     section("BUTTONS");
@@ -1070,13 +1103,20 @@ void draw_controls(ImDrawList *dl) {
 
     float by = L.S.y - 60 * L.U;
     if (footer_button("RESET CONTROLS", 0, L.S.x * 0.5f - 150 * L.U, by)) {
+        Settings d;
+        settings_defaults(&d);
         settings_default_bindings(c);
-        c->mouse_look = true;
-        c->mouse_sens = 6.0f;
+        c->mouse_look = d.mouse_look, c->mouse_sens = d.mouse_sens;
+        c->cam_stick = d.cam_stick, c->stick_speed = d.stick_speed;
+        c->stick_dead_zone = d.stick_dead_zone, c->stick_curve = d.stick_curve;
         memcpy(L.saved->key, c->key, sizeof c->key);
         memcpy(L.saved->pad, c->pad, sizeof c->pad);
         L.saved->mouse_look = c->mouse_look;
         L.saved->mouse_sens = c->mouse_sens;
+        L.saved->cam_stick = c->cam_stick;
+        L.saved->stick_speed = c->stick_speed;
+        L.saved->stick_dead_zone = c->stick_dead_zone;
+        L.saved->stick_curve = c->stick_curve;
         L.dirty = true;
     }
     if ((footer_button("BACK", 1, L.S.x * 0.5f + 150 * L.U, by) || nav_back()) && L.cap.action < 0)

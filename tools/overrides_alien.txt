@@ -6,3 +6,4 @@
 800625cc wrap  # flashlight update (infinite flashlight)
 8004dea8 wrap  # deliver a message to an object (enemy attack damage)
 800519d0 wrap  # apply damage to an object (acid damage to the player)
+8005ecbc wrap  # player update (camera: mouse look and right stick)

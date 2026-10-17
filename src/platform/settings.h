@@ -66,6 +66,11 @@ typedef struct Settings {
     /* input */
     bool mouse_look;
     float mouse_sens;
+    /* camera: the right stick read directly (no delay, own dead zone) */
+    bool cam_stick;
+    int stick_speed;         /* percent of the game's turn/look speed */
+    int stick_dead_zone;     /* percent of the stick's travel */
+    int stick_curve;         /* index into g_stick_curves */
     int key[ACT_COUNT][KEY_SLOTS];
     int pad[ACT_COUNT];
 } Settings;
@@ -84,6 +89,10 @@ typedef struct EnemyGroupInfo {
 } EnemyGroupInfo;
 extern const EnemyGroupInfo g_enemy_groups[DMG_GROUP_COUNT];
 #define ENEMY_DAMAGE_MAX 200
+
+/* right stick response curves: name and exponent */
+#define STICK_CURVES 3
+extern const struct StickCurve { const char *name, *id; float exponent; } g_stick_curves[STICK_CURVES];
 
 /* binding names (shown in the launcher, stored in config.ini) */
 const char *bind_key_name(int code, char *buf, size_t n);

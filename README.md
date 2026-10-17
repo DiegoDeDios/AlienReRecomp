@@ -26,6 +26,7 @@ only fully visible in widescreen.*
   * [No more wobbly polygons](#no-more-wobbly-polygons)
   * [Steady 60 fps](#steady-60-fps)
   * [Mouse and keyboard](#mouse-and-keyboard)
+  * [Responsive camera](#responsive-camera)
   * [Sprint](#sprint)
   * [Enemy damage sliders](#enemy-damage-sliders)
   * [Infinite flashlight](#infinite-flashlight)
@@ -86,6 +87,27 @@ Controllers are detected automatically and start with the PlayStation
 layout. F1 releases the mouse; clicking the window captures it again.
 
 ![The Controls page](docs/media/controls.jpg)
+
+### Responsive camera
+
+In the original the camera stick only sets a turning speed, ignores the
+first 38% of the stick's travel, and reaches the game two frames late. The
+port reads the camera input right when the game needs it:
+
+* **Mouse look turns the camera directly**: every mouse movement turns the
+  view by exactly that much, immediately, with no dead zone and no speed
+  limit.
+* **Responsive stick** (on by default): the right stick and the look keys
+  take effect on the next frame, with a 10% dead zone instead of 38%, a
+  choice of response curves (Linear, Smooth, Precise) and an adjustable
+  speed (150% of the original by default). Turn it off for the original
+  handling.
+
+| Right stick, Turn speed 4 | Original | This port (defaults) |
+| --- | --- | --- |
+| Frames until the camera moves | 3 | 1 |
+| Stick travel ignored | 38% | 10% |
+| Full-speed turn | 137°/s | 206°/s |
 
 ### Sprint
 
@@ -163,6 +185,7 @@ applying on the next start. **Quit to desktop** is there too.
 | Sprint (hold Shift) | working |
 | Infinite flashlight (optional) | working |
 | Enemy damage settings (overall and per kind of enemy) | working |
+| Responsive camera: direct mouse look, right stick without delay | working |
 | Launcher: disc selection, settings, control rebinding | working |
 | In-game overlay (F2 / Select+Start): settings, controls, quit | working |
 | Software renderer (reference) | working |
@@ -243,7 +266,9 @@ The launcher opens first:
   newborn, marines, sentry tank, acid blood).
 * **Controls**: rebind every PlayStation button, the keyboard stick
   directions, sprint and fast forward, for keyboard/mouse (two keys per
-  action) and controller. Mouse look and sensitivity are there too.
+  action) and controller. The camera settings are there too: mouse look
+  and sensitivity, responsive stick, stick look speed, dead zone and
+  response curve.
 * **Start game**.
 
 Everything is navigable with the mouse, the keyboard (arrows, Enter, Esc)
@@ -273,11 +298,12 @@ testing):
 | `--no-infinite-flashlight` | the flashlight battery runs down and recharges as in the original |
 | `--enemy-damage PCT`, `--enemy-damage GROUP=PCT` | damage taken from all enemies / one kind (`alien_warriors`, `facehuggers`, `chestbursters`, `queen`, `newborn`, `marines`, `sentry_tank`, `acid_blood`), 0–200, default 100; repeatable |
 | `--fullscreen`, `--show-fps`, `--sharp`, `--mouse-sens N` | as in the launcher |
+| `--original-stick` | the right stick through the game's own input handling (delay, 38% dead zone) |
 | `--save-dir DIR` | folder for memory cards and `config.ini` (default below) |
 | `--renderer sw` | use the software rasterizer (pixel-accurate reference) |
 | `--headless --frames N --shot F:file.png` | run without a window, write screenshots (ignores `config.ini`) |
 | `--record F:N:STEP:PREFIX` | write N screenshots, one every STEP frames from frame F, as `PREFIX_0000.png`… |
-| `--press F:button[:len]`, `--stick F:len:lx:ly:rx:ry`, `--fuzz F:seed` | scripted / random input (testing; `sprint` is a button name too) |
+| `--press F:button[:len]`, `--stick F:len:lx:ly:rx:ry`, `--mouse F:len:dx:dy`, `--fuzz F:seed` | scripted / random input (testing; `sprint` is a button name too; mouse motion in counts per frame) |
 | `--launcher-shot file.png [--launcher-page settings\|controls]`, `--launcher-keys K1,K2,…` | render a launcher page to PNG / drive it with scripted keys (testing, docs) |
 | `--overlay-keys F:T1,T2,…`, `--overlay-shot PREFIX` | from frame F, drive the in-game overlay with tokens: SDL key names (`F2`, `Down`, `Return`…), `pad:back+start[:ticks]` (a virtual controller), `WAITn`, and `SHOT` (writes the window with the overlay to `PREFIX_N.png`) |
 | `--wav file.wav` | record the audio output |

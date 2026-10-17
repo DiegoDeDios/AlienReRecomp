@@ -163,23 +163,66 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   facing), `+0x14` move magnitude (`0x1000` = full), `+0x38`/`+0x3C`
   buttons this/last frame.
 * Player object: pointer at `gp+0x474` (`0x800A49E8`). Fields: `+0x30/34/38`
-  position (20.12 fixed point), `+0x3C/3E` pitch/yaw (4096 = 360°),
+  position (20.12 fixed point), `+0x3C` body pitch (only used while
+  swimming, ±1024; the view's pitch is in the camera object, below),
+  `+0x3E` yaw (4096 = 360°),
   `+0x44/48/4C` velocity, `+0x50` pushed impulse (decays ×0.9 per vblank),
   `+0x88` current move speed, `+0x15A` speed factor (clamped to 0–`0x7FF`,
-  `0x800` ≈ 1.0), `+0x171` stance (0 standing; selects the slow crouch
-  speed and a per-stance camera height — meaning of values 1–3 inferred).
+  `0x800` ≈ 1.0), `+0x171` stance (0 standing, 5 crouched (seen); selects
+  the slow crouch speed, a per-stance camera height and the update handler
+  through a jump table at `0x800A33CC`; 3 is probably swimming).
 * Player update `0x8005ECBC`: target move speed = magnitude × 7.2 units per
   vblank standing (`0x7333`), 2.8 crouched (`0x2CCC`), 3.5 swimming
   (`0x3800`); `0x8005E8E8` ramps `+0x88` towards it (scaled 0.75–1.0 by the
   stick direction, so backing up is slower) and returns the displacement,
   then the collision routine `0x80026264` resolves the move.
-* `0x8006215C` updates a second object (pointer at `0x800A49FC`) from the
-  player's animated skeleton and runs it through the same collision; it
-  sits about 95 units above the player, probably the camera anchor
-  (inferred).
+* `0x8006215C` updates the camera object (pointer at `0x800A49FC`) from the
+  player's animated skeleton and the view angles, and runs it through the
+  same collision; it sits about 95 units above the player. Its `+0x3C` is
+  the view's pitch.
 * `0x800A81BC` (hand-written): screen-space subdivision of a textured quad
   packet (`a0`) into `2^a2 × 2^a2` quads by averaging corner positions,
   colours and UVs.
+
+## Camera and controller input (gameplay)
+
+* Each frame the main loop processes both pads (`0x80031594`, called at
+  `0x8001FFB0`) and then builds the command block (`0x80032530`, at
+  `0x8001FFD8`); the player update reads it later in the frame.
+* Pad processing: raw stick bytes × 64 go into a 3-sample history per axis
+  (pad state `+0x10`…, pad 0 at `0x800BDAF0`); the output axes at `+0x00`
+  (left X), `+0x04` (left Y), `+0x08` (right X), `+0x0C` (right Y) are the
+  average past a dead zone of `(STICK DEAD ZONE × 23 × 32 + 256)` (options
+  `+0x10`, default 4: 50 of 127 steps, 38% of the travel), scaled to
+  ±4096. A stick change reaches these outputs two frames after the
+  controller reports it (libpad hands received data to the game a vblank
+  later, and the game processes it the frame after).
+* Command block builder: the control type's table (pointer at
+  `gp+0x190`) gives the command slot of each analog axis at `+0xC8` (three
+  variants of four, chosen by command `+0x40`/`+0x48`), of the second
+  port's first two axes at `+0x108` (unmapped in the dual-stick layouts;
+  presumably the PlayStation Mouse of the mouse control types), and of the
+  buttons. In the default dual-stick layout: right X → `+0x00` turn, right Y
+  → `+0x04` look, left Y → `+0x08` forward, left X → `+0x0C` strafe. The
+  game's Invert Y (options `+0x0E`) is applied here. `+0x18` set means look
+  works as a speed (dual-stick layouts).
+* Turning (player update): yaw += turn × rate >> 12, rate = TURN SPEED
+  (options `+0x11`) × 27 / 8 + 13, or × 5 / 2 + 10 while swimming (stance
+  3), times the frame step. Default speed 4: 26 units (2.3°) per frame at
+  full deflection, 137°/s; no acceleration. A pending 180° turn (command
+  button bit 4, probably the quick turn) is spread over several frames.
+* Looking up/down (`0x80060840`): with `+0x18` set, pitch += look × (LOOK
+  SPEED (`+0x12`) × 11 / 4 + 16) × frame step >> 12; otherwise the stick
+  sets a target pitch, level again when released; a centre-view button
+  (command `+0x38` bit 24) pulls it back to 0; clamped to ±600 (about
+  ±53°). Stored in the player state (`+0x56`,
+  head yaw `+0x54`) and the camera object (`+0x3C`). While swimming the
+  body pitch (player `+0x3C`, ±1024) follows the look value at the turn
+  rate. With Look hold, turn input turns the head instead (±900).
+* The mouse control types (DIGITAL & MOUSE / ANALOG & MOUSE) appear to
+  feed the mouse into the same turn/look slots through that table, so the
+  game's own mouse support would have the same speed scaling and delay
+  (inferred from the builder; not emulated).
 
 ## Inventory and items (gameplay)
 
