@@ -29,6 +29,21 @@ You need your own copy of the game disc image (`.cue` + `.bin` tracks) in
 | Memory card saves (`bu00:`): save, load, overwrite | working |
 | DualShock analog + rumble protocol | implemented (no rumble output yet) |
 
+## TODO
+
+* **High-resolution texture replacement.** The game's art can't simply be
+  swapped for bigger images: textures are small 4-bit tiles packed into
+  256×256 VRAM pages, each drawn with its own 16-colour palette (see
+  [Textures and images](docs/FINDINGS.md#textures-and-images)). Plan, as in
+  emulators such as DuckStation:
+  1. Dump every texture the game draws (a page region plus its palette) to
+     PNG, named by a hash of its pixels and palette.
+  2. Upscale or repaint the dumped images.
+  3. Have the hardware renderer (`src/render/gpu_hw.c`) load replacements
+     with the same names and draw them instead of the originals.
+
+  Full-screen images (loading screens, title art) can be replaced whole.
+
 ## Build
 
 Requirements: Xcode command line tools, CMake, Ninja, Python 3, SDL3

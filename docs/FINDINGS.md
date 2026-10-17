@@ -28,14 +28,48 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
     `S00` file of each level is the largest, likely shared level data).
   * `*.CVS` — character/cutscene data (`RIPLEY`, `CALL`, `CHRISTIE`,
     `DISTEPHA`, `MARINES`, `NEWBORN`, `SQUEEN`, `UFATHER`, `ALIEN1`).
-  * `*.TIM` — standard PS1 TIM images (loading screens `ELOADnn`, `ECALIB`,
-    front-end `FEGRUKnn`).
+  * `*.TIM` — loading screens `ELOADnn`, `ECALIB` (not TIMs, see below)
+    and standard PS1 TIM images for the front end (`FEGRUKnn`).
   * `*.TXF` — HUD panels and end sequences (`PANELn`, `ENDSEQn`).
   * `*.TUK` — UK-English text banks (`TEXTUK`, `LEVnnUK`, `CRUDUK`); the
     executable builds names from `LEV%02d%c%c.TUK` / `TEXT%c%c.TUK` with a
     two-letter language code (`UKFRGRITSPJP` table in the executable).
   * `DEMOn.DEM` — attract-mode input recordings.
   * `FRONTEND.CVB`, `UFATHER.CVD`.
+
+## Textures and images
+
+* **Level files** (`L??S??.WAD`): a 2 KiB header with the chunk count at
+  `+0x10` and, from `+0x20`, 8-byte directory entries `{char tag[4]
+  (stored reversed); u32 size}`. Chunks follow from `+0x800`, each 2 KiB
+  aligned: `TXF` (textures), `MAP`, `CVB`, `BIN` (starts with `CMD `) and
+  one `CVD` per character set (`RIPLEY`, `MARINES`, `ALIEN1`, …).
+* **TXF** (level `TXF` chunks, `PANELn.TXF` HUD and effects, `ENDSEQn.TXF`):
+  `u8 2, u8 3, u16 page count`, then at `+0x14` one 8-byte entry per page
+  `{u16 0; u16 x; u16 y; u16 0}`, the page's VRAM position in 16-bit units.
+  In level chunks the pages (64×256 VRAM units = 32 KiB each) follow
+  consecutively from `+0x800` and are copied into VRAM unchanged (checked
+  byte for byte for `L01S00`); a table of unknown purpose comes after them,
+  its size at `+0x08`. The `PANEL` files' page data is not laid out
+  consecutively (not decoded further).
+* **VRAM in level 1:** two framebuffers top left; textures shared by the
+  whole level (`L01S00`) at x 0–319, y 256; the current section's textures
+  at x 448–703, y 256; HUD, fonts, item icons and effects (`PANEL1`) at
+  x 768–1023.
+* **Texture organisation:** level pages are 4-bit sheets of mostly 64×64
+  tiles (some 32×32), each tile drawn with its own 16-colour palette. The
+  palettes sit in the bottom rows of the pages (y ≈ 420–511 at x = 0, 448,
+  768 and 960; also y ≈ 222–251 at x = 960), and one tile can be drawn with
+  several palettes (one level page uses 18). HUD pages mix 4- and 8-bit. The
+  page, palette and UVs of each polygon come from the geometry, not from
+  the TXF; all textured drawing seen in level 1 uses polygons, no sprites.
+* **Loading screens** (`ELOADnn.TIM`, `ECALIB.TIM`): `u16 width, u16
+  height`, 8 bytes, then 15-bit pixels (512×240 and 384×240).
+  `FEGRUK05/06.TIM` are standard 16-bit 256×256 TIMs placed at VRAM
+  (768, 256).
+* The character files (`*.CVS`) hold no texture data; character skins are
+  probably in each level's TXF (inferred, not yet checked with a character
+  on screen).
 
 ## Boot loader `SLUS_006.33`
 
