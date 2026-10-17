@@ -1,0 +1,26 @@
+# Original game data (copyrighted; never commit)
+AlienResurrectionBinary/
+disc/
+*.bin
+*.cue
+*.mcr
+*.mcd
+
+# Derived from the game executables (regenerate with tools/regen.sh)
+src/gen/
+analysis/
+
+# Reference material cloned separately (see README)
+reference/
+
+# Build outputs, screenshots, recordings, test output
+build*/
+out/
+*.png
+*.wav
+saves/
+
+# OS / editor / tool caches
+.DS_Store
+.cache/
+__pycache__/

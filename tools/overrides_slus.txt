@@ -1,0 +1,2 @@
+# Functions replaced by native code in src/runtime/native.c
+800163d4  # libetc VSync wait helper (v_wait)
