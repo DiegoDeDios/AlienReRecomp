@@ -762,6 +762,12 @@ void platform_vblank(void) {
     }
     if (opt.headless) {
         poll_input();
+        /* no window, but the frame's GPU work must still be submitted:
+         * otherwise one command buffer collects every frame's draws and
+         * uploads until the next screenshot, and memory grows without
+         * bound (tens of GB on long runs) */
+        if (g_gpu_ok)
+            render_present();
         return;
     }
     script_tick();

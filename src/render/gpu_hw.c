@@ -157,6 +157,10 @@ typedef struct {
 
 #define MAX_VERTS 65536
 #define MAX_DRAWS 8192
+/* upload staging: room for several flushes / uploads per frame */
+#define VTB_SIZE (4u * MAX_VERTS * (uint32_t)sizeof(HwVertex))
+#define TEX_TB_SIZE (8u * 1024u * 1024u)
+
 
 static struct {
     SDL_GPUDevice *dev;
@@ -183,6 +187,10 @@ static struct {
     int cap_w, cap_h;
     bool capture_wanted;
     RenderOverlayFn overlay;
+    uint32_t vtb_off, tex_off; /* staging offsets in this command buffer */
+    /* fences of the last frames submitted (see submit_frame) */
+    SDL_GPUFence *inflight[2];
+    int inflight_pos;
     bool hold_aspect;
     float held_aspect;
 } H;
@@ -340,8 +348,34 @@ static void ensure_cmd(void) {
         H.cmd = SDL_AcquireGPUCommandBuffer(H.dev);
         if (!H.cmd)
             fatal("acquire command buffer: %s", SDL_GetError());
+        H.vtb_off = H.tex_off = 0;
     }
 }
+
+/* Staging for uploads: within one command buffer, successive uploads go to
+ * disjoint ranges of the same transfer buffer, and the buffer is cycled
+ * (SDL hands out an instance no pending command buffer uses) only for the
+ * first upload of a command buffer or when it is full. Cycling on every
+ * upload made SDL allocate a new instance per flush while the earlier ones
+ * were still referenced by the same command buffer: hundreds of megabytes
+ * per frame in flight. Returns the mapped range; *at is its offset and
+ * *cycled says whether a destination buffer written from it must be cycled
+ * too (its earlier contents may still be in use). */
+static uint8_t *stage_map(SDL_GPUTransferBuffer *tb, uint32_t *off, uint32_t size,
+                          uint32_t bytes, uint32_t align, uint32_t *at, bool *cycled) {
+    bool cycle = *off == 0 || *off + bytes > size;
+    if (cycle)
+        *off = 0;
+    uint8_t *p = SDL_MapGPUTransferBuffer(H.dev, tb, cycle);
+    if (!p)
+        fatal("map transfer buffer: %s", SDL_GetError());
+    *at = *off;
+    *off = (*off + bytes + align - 1) & ~(align - 1);
+    if (cycled)
+        *cycled = cycle;
+    return p + *at;
+}
+
 
 static inline void rgba_from16(uint16_t p, uint8_t *o) {
     int r = p & 31, g = (p >> 5) & 31, b = (p >> 10) & 31;
@@ -395,21 +429,22 @@ static void flush_draws(void) {
     }
     ensure_cmd();
     /* upload vertices */
-    uint32_t bytes = H.nverts * (uint32_t)sizeof(HwVertex);
-    void *p = SDL_MapGPUTransferBuffer(H.dev, H.vtb, true);
+    uint32_t bytes = H.nverts * (uint32_t)sizeof(HwVertex), at;
+    bool cycle;
+    uint8_t *p = stage_map(H.vtb, &H.vtb_off, VTB_SIZE, bytes, 256, &at, &cycle);
     memcpy(p, H.verts, bytes);
     SDL_UnmapGPUTransferBuffer(H.dev, H.vtb);
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(H.cmd);
-    SDL_GPUTransferBufferLocation src = {H.vtb, 0};
-    SDL_GPUBufferRegion dst = {H.vbuf, 0, bytes};
-    SDL_UploadToGPUBuffer(cp, &src, &dst, true);
+    SDL_GPUTransferBufferLocation src = {H.vtb, at};
+    SDL_GPUBufferRegion dst = {H.vbuf, at, bytes};
+    SDL_UploadToGPUBuffer(cp, &src, &dst, cycle);
     SDL_EndGPUCopyPass(cp);
 
     SDL_GPUColorTargetInfo ct = {.texture = H.vram,
                                  .load_op = SDL_GPU_LOADOP_LOAD,
                                  .store_op = SDL_GPU_STOREOP_STORE};
     SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(H.cmd, &ct, 1, NULL);
-    SDL_GPUBufferBinding vb = {H.vbuf, 0};
+    SDL_GPUBufferBinding vb = {H.vbuf, at};
     SDL_BindGPUVertexBuffers(rp, 0, &vb, 1);
     SDL_GPUTextureSamplerBinding ts = {H.vram_read, H.nearest};
     SDL_BindGPUFragmentSamplers(rp, 0, &ts, 1);
@@ -744,13 +779,15 @@ static void blit_upload(int x, int y, int w, int h, bool setmask) {
         q[i].u = px[i];
         q[i].v = py[i];
     }
-    void *p = SDL_MapGPUTransferBuffer(H.dev, H.vtb, true);
+    uint32_t at;
+    bool cycle;
+    uint8_t *p = stage_map(H.vtb, &H.vtb_off, VTB_SIZE, sizeof q, 256, &at, &cycle);
     memcpy(p, q, sizeof q);
     SDL_UnmapGPUTransferBuffer(H.dev, H.vtb);
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(H.cmd);
-    SDL_GPUTransferBufferLocation src = {H.vtb, 0};
-    SDL_GPUBufferRegion dst = {H.vbuf, 0, sizeof q};
-    SDL_UploadToGPUBuffer(cp, &src, &dst, true);
+    SDL_GPUTransferBufferLocation src = {H.vtb, at};
+    SDL_GPUBufferRegion dst = {H.vbuf, at, sizeof q};
+    SDL_UploadToGPUBuffer(cp, &src, &dst, cycle);
     SDL_EndGPUCopyPass(cp);
 
     SDL_GPUColorTargetInfo ct = {.texture = H.vram,
@@ -758,7 +795,7 @@ static void blit_upload(int x, int y, int w, int h, bool setmask) {
                                  .store_op = SDL_GPU_STOREOP_STORE};
     SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(H.cmd, &ct, 1, NULL);
     SDL_BindGPUGraphicsPipeline(rp, H.blit_pipe);
-    SDL_GPUBufferBinding vb = {H.vbuf, 0};
+    SDL_GPUBufferBinding vb = {H.vbuf, at};
     SDL_BindGPUVertexBuffers(rp, 0, &vb, 1);
     SDL_GPUTextureSamplerBinding ts = {H.upload, H.nearest};
     SDL_BindGPUFragmentSamplers(rp, 0, &ts, 1);
@@ -783,7 +820,9 @@ static void upload_rect(int x, int y, int w, int h, bool setmask) {
     if (w <= 0 || h <= 0)
         return;
     ensure_cmd();
-    uint8_t *p = SDL_MapGPUTransferBuffer(H.dev, H.tex_tb, true);
+    uint32_t at;
+    /* 512: D3D12's texture upload offset alignment */
+    uint8_t *p = stage_map(H.tex_tb, &H.tex_off, TEX_TB_SIZE, (uint32_t)(w * h * 4), 512, &at, NULL);
     for (int j = 0; j < h; j++) {
         const uint16_t *row = &g_vram[(y + j) * VRAM_W + x];
         uint8_t *o = p + (size_t)j * (size_t)w * 4;
@@ -792,7 +831,7 @@ static void upload_rect(int x, int y, int w, int h, bool setmask) {
     }
     SDL_UnmapGPUTransferBuffer(H.dev, H.tex_tb);
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(H.cmd);
-    SDL_GPUTextureTransferInfo ti = {H.tex_tb, 0, (Uint32)w, (Uint32)h};
+    SDL_GPUTextureTransferInfo ti = {H.tex_tb, at, (Uint32)w, (Uint32)h};
     SDL_GPUTextureRegion r = {.texture = H.upload, .x = (Uint32)x, .y = (Uint32)y,
                               .w = (Uint32)w, .h = (Uint32)h, .d = 1};
     SDL_UploadToGPUTexture(cp, &ti, &r, false);
@@ -971,6 +1010,24 @@ static void present_prepare(void) {
     ensure_cmd();
 }
 
+/* Submit the frame's command buffer, then wait until the frame submitted
+ * two frames ago has finished on the GPU. Presenting to a window already
+ * blocks on the swapchain, but without one (headless runs, minimised
+ * window, fast forward) nothing else stops the emulator from queueing
+ * frames faster than the GPU draws them; each queued frame keeps its
+ * cycled transfer buffers alive, and memory use grows without bound. */
+static void submit_frame(void) {
+    SDL_GPUFence *f = SDL_SubmitGPUCommandBufferAndAcquireFence(H.cmd);
+    H.cmd = NULL;
+    SDL_GPUFence **slot = &H.inflight[H.inflight_pos];
+    if (*slot) {
+        SDL_WaitForGPUFences(H.dev, true, slot, 1);
+        SDL_ReleaseGPUFence(H.dev, *slot);
+    }
+    *slot = f;
+    H.inflight_pos = (H.inflight_pos + 1) % 2;
+}
+
 void render_present(void) {
     if (!H.dev)
         return;
@@ -1021,8 +1078,7 @@ void render_present(void) {
         H.capture_wanted = false;
         return;
     }
-    SDL_SubmitGPUCommandBuffer(H.cmd);
-    H.cmd = NULL;
+    submit_frame();
 }
 
 bool render_capture(uint8_t **rgb, int *w, int *h) {
@@ -1166,13 +1222,12 @@ bool render_init(SDL_Window *win, const RenderConfig *cfg) {
     H.tmp = make_texture(W, Ht, SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET);
     H.upload = make_texture(1024, 512, SDL_GPU_TEXTUREUSAGE_SAMPLER);
 
-    SDL_GPUBufferCreateInfo bci = {.usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-                                   .size = MAX_VERTS * sizeof(HwVertex)};
+    SDL_GPUBufferCreateInfo bci = {.usage = SDL_GPU_BUFFERUSAGE_VERTEX, .size = VTB_SIZE};
     H.vbuf = SDL_CreateGPUBuffer(H.dev, &bci);
     SDL_GPUTransferBufferCreateInfo tci = {.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-                                           .size = MAX_VERTS * sizeof(HwVertex)};
+                                           .size = VTB_SIZE};
     H.vtb = SDL_CreateGPUTransferBuffer(H.dev, &tci);
-    tci.size = 1024 * 512 * 4;
+    tci.size = TEX_TB_SIZE;
     H.tex_tb = SDL_CreateGPUTransferBuffer(H.dev, &tci);
     SDL_GPUTransferBufferCreateInfo dci = {.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
                                            .size = (Uint32)(W * Ht * 4)};
@@ -1225,6 +1280,11 @@ void render_shutdown(void) {
     if (!H.dev)
         return;
     SDL_WaitForGPUIdle(H.dev);
+    for (int i = 0; i < 2; i++)
+        if (H.inflight[i]) {
+            SDL_ReleaseGPUFence(H.dev, H.inflight[i]);
+            H.inflight[i] = NULL;
+        }
     SDL_DestroyGPUDevice(H.dev);
     H.dev = NULL;
 }
