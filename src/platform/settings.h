@@ -55,6 +55,7 @@ typedef struct Settings {
     bool smooth;
     bool fullscreen;
     bool show_fps;
+    char gpu_driver[16];     /* Windows: "auto", "vulkan" or "direct3d12" */
     /* gameplay */
     bool sprint;
     int sprint_pct;

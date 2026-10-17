@@ -13,6 +13,20 @@
 extern "C" {
 #endif
 
+/* Host non-local jumps (interrupt return, LoadExec). On 64-bit Windows the
+ * C library's longjmp unwinds the stack frame by frame (SEH); GCC's
+ * builtins only restore the registers, like longjmp on other systems. */
+#if defined(_WIN32) && defined(__GNUC__)
+typedef void *host_jmp_buf[5];
+#define host_setjmp(b) __builtin_setjmp(b)
+#define host_longjmp(b) __builtin_longjmp((b), 1)
+#else
+#include <setjmp.h>
+typedef jmp_buf host_jmp_buf;
+#define host_setjmp(b) setjmp(b)
+#define host_longjmp(b) longjmp((b), 1)
+#endif
+
 #define PSX_CPU_HZ 33868800
 #define PSX_NTSC_FRAME_CYCLES 564480 /* 33868800 / 60 */
 #define PSX_NTSC_LINES 263
@@ -21,15 +35,22 @@ extern "C" {
 extern CPU *g_cpu;
 
 /* ---- logging ---- */
+/* MinGW builds use MinGW's C99 printf (__USE_MINGW_ANSI_STDIO), so formats
+ * are checked as GNU printf (%zu etc.) rather than Microsoft's */
+#ifdef __MINGW32__
+#define PSX_PRINTF(f, a) __attribute__((format(gnu_printf, f, a)))
+#else
+#define PSX_PRINTF(f, a) __attribute__((format(printf, f, a)))
+#endif
+
 enum { LOG_ERR, LOG_WARN, LOG_INFO, LOG_DBG };
 extern int g_log_level;
-void log_msg(int level, const char *sys, const char *fmt, ...)
-    __attribute__((format(printf, 3, 4)));
+void log_msg(int level, const char *sys, const char *fmt, ...) PSX_PRINTF(3, 4);
 #define LOGE(sys, ...) log_msg(LOG_ERR, sys, __VA_ARGS__)
 #define LOGW(sys, ...) log_msg(LOG_WARN, sys, __VA_ARGS__)
 #define LOGI(sys, ...) log_msg(LOG_INFO, sys, __VA_ARGS__)
 #define LOGD(sys, ...) do { if (g_log_level >= LOG_DBG) log_msg(LOG_DBG, sys, __VA_ARGS__); } while (0)
-_Noreturn void fatal(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+_Noreturn void fatal(const char *fmt, ...) PSX_PRINTF(1, 2);
 
 /* ---- modules (recompiled executables) ---- */
 typedef struct Module {

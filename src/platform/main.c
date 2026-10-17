@@ -14,6 +14,7 @@
  *   --press F:BUTTON[:LEN]  scripted input (BUTTON = start/cross/.../sprint)
  */
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h> /* Windows: SDL provides WinMain and calls main */
 #include <dirent.h>
 #include <math.h>
 #include <stdlib.h>
@@ -365,7 +366,7 @@ const char *platform_data_dir(void) {
         if (pref) {
             snprintf(dir, sizeof dir, "%s", pref);
             size_t n = strlen(dir);
-            if (n && dir[n - 1] == '/')
+            if (n && (dir[n - 1] == '/' || dir[n - 1] == '\\'))
                 dir[n - 1] = 0;
         } else {
             snprintf(dir, sizeof dir, "saves");
@@ -913,6 +914,9 @@ static void parse_args(int argc, char **argv) {
                    "  --no-vsync      present immediately (may tear, lowest latency)\n"
                    "  --show-fps      show the game's frame rate in the window title\n"
                    "  --no-pgxp       original integer geometry and affine textures\n"
+#ifndef __APPLE__
+                   "  --gpu-driver API  auto (default), vulkan or direct3d12\n"
+#endif
                    "  --cpu-speed PCT emulated CPU speed in percent (default 300; 100 = original)\n"
                    "  --sprint-speed PCT  movement speed while Shift is held (default 190; 100 = off)\n"
                    "  --no-infinite-flashlight  the flashlight battery runs down as in the original\n"
@@ -1006,6 +1010,9 @@ static void parse_args(int argc, char **argv) {
             i++;
         } else if (!strcmp(a, "--save-dir") && v) {
             opt.save_dir = v, i++;
+        } else if (!strcmp(a, "--gpu-driver") && v) {
+            /* Windows: auto, vulkan or direct3d12 */
+            snprintf(g_cfg.gpu_driver, sizeof g_cfg.gpu_driver, "%s", v), i++;
         } else if (!strcmp(a, "--no-pgxp")) {
             g_cfg.pgxp = false;
         } else if (!strcmp(a, "--no-infinite-flashlight")) {
@@ -1150,6 +1157,12 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--save-dir") && i + 1 < argc)
             opt.save_dir = argv[++i];
     }
+#ifdef _WIN32
+    {
+        void win32_setup_console(const char *data_dir);
+        win32_setup_console(platform_data_dir());
+    }
+#endif
     if (!headless) {
         settings_load(&g_cfg, settings_path());
     }
@@ -1174,7 +1187,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
     }
-    mkdir(platform_data_dir(), 0755);
+    SDL_CreateDirectory(platform_data_dir());
     if (!opt.headless) {
         float aspect = g_cfg.widescreen ? (float)g_cfg.aspect_w / (float)g_cfg.aspect_h
                                         : 4.0f / 3.0f;
@@ -1191,6 +1204,9 @@ int main(int argc, char **argv) {
             launcher_debug_shot(opt.launcher_shot, opt.launcher_page);
         if (opt.launcher_keys)
             launcher_debug_keys(opt.launcher_keys);
+        static char driver[16];
+        snprintf(driver, sizeof driver, "%s", g_cfg.gpu_driver);
+        g_render_driver = driver;
         if (!launcher_run(g_win, &g_cfg, &g_saved, settings_path()))
             return 0;
     }
@@ -1255,6 +1271,9 @@ int main(int argc, char **argv) {
         RenderConfig rc = {.scale = opt.render_scale, .software = opt.software,
                            .headless = opt.headless, .smooth = opt.smooth,
                            .vsync = !opt.no_vsync, .vsync_paced = g_vsync_paced};
+        static char driver[16]; /* the API this run uses (the overlay compares) */
+        snprintf(driver, sizeof driver, "%s", g_cfg.gpu_driver);
+        g_render_driver = driver;
         g_gpu_ok = render_init(g_win, &rc);
         if (!g_gpu_ok && !opt.headless) {
             fprintf(stderr, "GPU initialisation failed\n");

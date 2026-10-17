@@ -7,6 +7,25 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "shader_blob.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* GPU device and shaders for the platform's graphics API (gpu_device.c);
+ * g_render_driver: "auto", "vulkan" or "direct3d12" (ignored on macOS) */
+extern const char *g_render_driver;
+SDL_GPUDevice *render_create_device(void);
+/* the game renderer's shaders: Direct3D 12 is only chosen if they compile */
+void render_require_shaders(const ShaderBlob *const *blobs, const SDL_GPUShaderStage *stages, int n);
+SDL_GPUShader *render_create_shader(SDL_GPUDevice *dev, const ShaderBlob *b,
+                                    SDL_GPUShaderStage stage, int samplers, int uniforms);
+/* HLSL -> DXBC for Direct3D 12 (Windows: d3dcompiler_47.dll); result is
+ * freed with SDL_free */
+bool render_hlsl_available(void);
+void *render_compile_hlsl(const char *src, const char *profile, size_t *size);
+
 typedef struct RenderConfig {
     int scale;          /* internal resolution multiplier (1 = native) */
     bool software;      /* use the software rasterizer, GPU only presents */
@@ -39,3 +58,7 @@ void render_set_smooth(bool smooth);
 /* Keep showing the current frame at its current aspect ratio (paused game
  * under the overlay) even if the widescreen settings change meanwhile. */
 void render_hold_display_aspect(bool hold);
+
+#ifdef __cplusplus
+}
+#endif

@@ -2,7 +2,6 @@
  * CPU glue for recompiled code: function dispatch, the event scheduler,
  * interrupt entry/exit and COP0.
  */
-#include <setjmp.h>
 #include <stdarg.h>
 #include <stdlib.h>
 
@@ -279,7 +278,7 @@ void cpu_service_events(CPU *c) {
         cpu_take_interrupt(c);
 }
 
-static jmp_buf *g_exc_jmp;
+static host_jmp_buf *g_exc_jmp;
 static int g_exc_depth;
 
 void cpu_take_interrupt(CPU *c) {
@@ -294,11 +293,11 @@ void cpu_take_interrupt(CPU *c) {
     c->cop0[13] = (c->cop0[13] & ~0x7Cu) | (1u << 10); /* ExcCode=Int, IP2 */
     c->cop0[14] = c->pc;
 
-    jmp_buf jb;
-    jmp_buf *prev = g_exc_jmp;
+    host_jmp_buf jb;
+    host_jmp_buf *prev = g_exc_jmp;
     g_exc_jmp = &jb;
     g_exc_depth++;
-    if (setjmp(jb) == 0) {
+    if (host_setjmp(jb) == 0) {
         bios_exception(c);
         /* bios_exception returning means no ReturnFromException was
          * executed by guest code; treat as an implicit one. */
@@ -321,7 +320,7 @@ void cpu_return_from_exception(CPU *c) {
     (void)c;
     if (!g_exc_jmp)
         fatal("ReturnFromException outside of an exception");
-    longjmp(*g_exc_jmp, 1);
+    host_longjmp(*g_exc_jmp);
 }
 
 /* ------------------------------------------------------------------ */

@@ -53,8 +53,12 @@ bool disc_resolve(const char *path, char *cue, size_t n) {
     char tmp[1024];
     if (!resolve_rel(path, tmp, sizeof tmp))
         return false;
-    char abs[PATH_MAX];
+    char abs[4096];
+#ifdef _WIN32
+    snprintf(cue, n, "%s", _fullpath(abs, tmp, sizeof abs) ? abs : tmp);
+#else
     snprintf(cue, n, "%s", realpath(tmp, abs) ? abs : tmp);
+#endif
     return true;
 }
 
@@ -71,8 +75,8 @@ static bool resolve_rel(const char *path, char *cue, size_t n) {
     /* a track file: find the cue sheet next to it that uses it */
     char dir[1024];
     snprintf(dir, sizeof dir, "%s", path);
-    char *slash = strrchr(dir, '/');
-    const char *base = slash ? slash + 1 : path;
+    char *slash = (char *)path_last_sep(dir);
+    const char *base = slash ? path + (slash - dir) + 1 : path;
     if (slash)
         *slash = 0;
     else
