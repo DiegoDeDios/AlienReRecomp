@@ -26,7 +26,7 @@ only fully visible in widescreen.*
   * [No more wobbly polygons](#no-more-wobbly-polygons)
   * [Steady 60 fps](#steady-60-fps)
   * [Mouse and keyboard](#mouse-and-keyboard)
-  * [Responsive camera](#responsive-camera)
+  * [Responsive controls](#responsive-controls)
   * [Sprint](#sprint)
   * [Enemy damage sliders](#enemy-damage-sliders)
   * [Infinite flashlight](#infinite-flashlight)
@@ -88,25 +88,27 @@ layout. F1 releases the mouse; clicking the window captures it again.
 
 ![The Controls page](docs/media/controls.jpg)
 
-### Responsive camera
+### Responsive controls
 
-In the original the camera stick only sets a turning speed, ignores the
-first 38% of the stick's travel, and reaches the game two frames late. The
-port reads the camera input right when the game needs it:
+In the original the sticks reach the game two frames late and are ignored
+until pushed 38% of the way; the camera stick only sets a turning speed.
+The port reads the controls right when the game needs them:
 
 * **Mouse look turns the camera directly**: every mouse movement turns the
   view by exactly that much, immediately, with no dead zone and no speed
   limit.
-* **Responsive stick** (on by default): the right stick and the look keys
-  take effect on the next frame, with a 10% dead zone instead of 38%, a
-  choice of response curves (Linear, Smooth, Precise) and an adjustable
-  speed (150% of the original by default). Turn it off for the original
-  handling.
+* **Responsive sticks** (on by default): both sticks, and the move and look
+  keys, take effect on the next frame, with a 10% dead zone instead of
+  38%. Half a push on the left stick walks at half speed; the camera stick
+  has a choice of response curves (Linear, Smooth, Precise) and an
+  adjustable speed (150% of the original by default). Turn it off for the
+  original handling.
 
-| Right stick, Turn speed 4 | Original | This port (defaults) |
+| Sticks, Turn speed 4 | Original | This port (defaults) |
 | --- | --- | --- |
-| Frames until the camera moves | 3 | 1 |
+| Frames until the camera or Ripley moves | 3 | 1 |
 | Stick travel ignored | 38% | 10% |
+| Movement with the left stick half pushed | 18% | 45% |
 | Full-speed turn | 137°/s | 206°/s |
 
 ### Sprint
@@ -185,7 +187,7 @@ applying on the next start. **Quit to desktop** is there too.
 | Sprint (hold Shift) | working |
 | Infinite flashlight (optional) | working |
 | Enemy damage settings (overall and per kind of enemy) | working |
-| Responsive camera: direct mouse look, right stick without delay | working |
+| Responsive controls: direct mouse look, sticks without delay | working |
 | Launcher: disc selection, settings, control rebinding | working |
 | In-game overlay (F2 / Select+Start): settings, controls, quit | working |
 | Software renderer (reference) | working |
@@ -266,9 +268,9 @@ The launcher opens first:
   newborn, marines, sentry tank, acid blood).
 * **Controls**: rebind every PlayStation button, the keyboard stick
   directions, sprint and fast forward, for keyboard/mouse (two keys per
-  action) and controller. The camera settings are there too: mouse look
-  and sensitivity, responsive stick, stick look speed, dead zone and
-  response curve.
+  action) and controller. The mouse and stick settings are there too: mouse
+  look and sensitivity, responsive sticks, stick dead zone, camera stick
+  speed and response curve.
 * **Start game**.
 
 Everything is navigable with the mouse, the keyboard (arrows, Enter, Esc)
@@ -298,7 +300,7 @@ testing):
 | `--no-infinite-flashlight` | the flashlight battery runs down and recharges as in the original |
 | `--enemy-damage PCT`, `--enemy-damage GROUP=PCT` | damage taken from all enemies / one kind (`alien_warriors`, `facehuggers`, `chestbursters`, `queen`, `newborn`, `marines`, `sentry_tank`, `acid_blood`), 0–200, default 100; repeatable |
 | `--fullscreen`, `--show-fps`, `--sharp`, `--mouse-sens N` | as in the launcher |
-| `--original-stick` | the right stick through the game's own input handling (delay, 38% dead zone) |
+| `--original-stick` | both sticks through the game's own input handling (delay, 38% dead zone) |
 | `--save-dir DIR` | folder for memory cards and `config.ini` (default below) |
 | `--renderer sw` | use the software rasterizer (pixel-accurate reference) |
 | `--headless --frames N --shot F:file.png` | run without a window, write screenshots (ignores `config.ini`) |

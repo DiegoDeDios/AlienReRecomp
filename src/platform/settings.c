@@ -123,7 +123,7 @@ void settings_defaults(Settings *s) {
         s->enemy_damage_group_pct[g] = 100;
     s->mouse_look = true;
     s->mouse_sens = 6.0f;
-    s->cam_stick = true;
+    s->stick_direct = true;
     s->stick_speed = 150;
     s->stick_dead_zone = 10;
     s->stick_curve = 1;
@@ -320,7 +320,9 @@ bool settings_load(Settings *s, const char *path) {
             if (!strcmp(k, "mouse_look")) s->mouse_look = parse_bool(v);
             else if (!strcmp(k, "sensitivity")) s->mouse_sens = (float)atof(v);
         } else if (!strcmp(sect, "camera")) {
-            if (!strcmp(k, "responsive_stick")) s->cam_stick = parse_bool(v);
+            /* "responsive_stick" (camera only) from the first version */
+            if (!strcmp(k, "responsive_sticks") || !strcmp(k, "responsive_stick"))
+                s->stick_direct = parse_bool(v);
             else if (!strcmp(k, "stick_speed")) s->stick_speed = clampi(atoi(v), 50, 300);
             else if (!strcmp(k, "stick_dead_zone")) s->stick_dead_zone = clampi(atoi(v), 0, 40);
             else if (!strcmp(k, "stick_curve")) {
@@ -371,9 +373,9 @@ bool settings_save(const Settings *s, const char *path) {
     fprintf(f, "\n");
     fprintf(f, "[mouse]\nmouse_look = %s\nsensitivity = %.2f\n\n", tf[s->mouse_look],
             (double)s->mouse_sens);
-    fprintf(f, "[camera]\nresponsive_stick = %s\nstick_speed = %d\nstick_dead_zone = %d\n"
+    fprintf(f, "[camera]\nresponsive_sticks = %s\nstick_speed = %d\nstick_dead_zone = %d\n"
                "stick_curve = %s\n\n",
-            tf[s->cam_stick], s->stick_speed, s->stick_dead_zone,
+            tf[s->stick_direct], s->stick_speed, s->stick_dead_zone,
             g_stick_curves[s->stick_curve].id);
     fprintf(f, "[keyboard]\n");
     char name[64];

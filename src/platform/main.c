@@ -408,9 +408,9 @@ static float settings_aspect(const Settings *c) {
 }
 
 static void apply_camera(const Settings *c) {
-    g_cam_stick = c->cam_stick;
+    g_stick_direct = c->stick_direct;
     g_cam_stick_speed = c->stick_speed;
-    g_cam_stick_dead_zone = c->stick_dead_zone;
+    g_stick_dead_zone = c->stick_dead_zone;
     g_cam_stick_curve = g_stick_curves[c->stick_curve].exponent;
 }
 
@@ -482,11 +482,11 @@ static void apply_live(void) {
         LOGI("overlay", "mouse look %s, sensitivity %.1f", c->mouse_look ? "on" : "off",
              (double)c->mouse_sens);
     }
-    if (c->cam_stick != a->cam_stick || c->stick_speed != a->stick_speed ||
+    if (c->stick_direct != a->stick_direct || c->stick_speed != a->stick_speed ||
         c->stick_dead_zone != a->stick_dead_zone || c->stick_curve != a->stick_curve) {
         apply_camera(c);
-        LOGI("overlay", "right stick: %s, speed %d%%, dead zone %d%%, curve %s",
-             c->cam_stick ? "responsive" : "original", c->stick_speed, c->stick_dead_zone,
+        LOGI("overlay", "sticks: %s, dead zone %d%%; camera stick speed %d%%, curve %s",
+             c->stick_direct ? "responsive" : "original", c->stick_dead_zone, c->stick_speed,
              g_stick_curves[c->stick_curve].id);
     }
     if (memcmp(c->key, a->key, sizeof c->key) || memcmp(c->pad, a->pad, sizeof c->pad))
@@ -913,7 +913,7 @@ static void parse_args(int argc, char **argv) {
                    "  --enemy-damage PCT|GROUP=PCT  damage taken from enemies (default 100;\n"
                    "                  groups as in config.ini [enemy_damage]; repeatable)\n"
                    "  --mouse-sens N  mouse-look sensitivity (default 6)\n"
-                   "  --original-stick  right stick through the game's own input path\n"
+                   "  --original-stick  both sticks through the game's own input path\n"
                    "                  (two frames of delay, 38%% dead zone)\n"
                    "  --save-dir DIR  folder for the memory card images\n"
                    "In game, F2 (or Select + Start held on a controller) opens the settings overlay.\n"
@@ -979,7 +979,7 @@ static void parse_args(int argc, char **argv) {
         } else if (!strcmp(a, "--mouse-sens") && v) {
             g_cfg.mouse_sens = (float)atof(v), i++;
         } else if (!strcmp(a, "--original-stick")) {
-            g_cfg.cam_stick = false;
+            g_cfg.stick_direct = false;
         } else if (!strcmp(a, "--mouse") && v) {
             /* FRAME:LEN:DX:DY scripted mouse motion per vblank (counts) */
             long f, len;

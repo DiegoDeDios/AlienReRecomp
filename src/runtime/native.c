@@ -230,10 +230,25 @@ void ALIEN_800519D0(CPU *c) {
 
 float g_cam_mouse_x, g_cam_mouse_y;
 int g_cam_mouse_age;
-bool g_cam_stick = true;
-int g_cam_stick_dead_zone = 10;
+bool g_stick_direct = true;
+int g_stick_dead_zone = 10;
 float g_cam_stick_curve = 1.5f;
 int g_cam_stick_speed = 150;
+
+/* Raw stick bytes (0x80 = centre) to -1..1 with a radial dead zone and a
+ * response curve. At or past the edge the values are kept as they are, so
+ * full diagonals (keyboard) are full on both axes, as in the game. */
+static void stick_shape(uint8_t rawx, uint8_t rawy, float curve, float *x, float *y) {
+    float fx = (float)(rawx - 128) / 127.0f, fy = (float)(rawy - 128) / 127.0f;
+    fx = fx < -1 ? -1 : fx > 1 ? 1 : fx;
+    fy = fy < -1 ? -1 : fy > 1 ? 1 : fy;
+    float m = sqrtf(fx * fx + fy * fy), dz = (float)g_stick_dead_zone / 100.0f, s = 0;
+    if (m >= 1)
+        s = 1;
+    else if (m > dz)
+        s = powf((m - dz) / (1 - dz), curve) / m;
+    *x = fx * s, *y = fy * s;
+}
 
 /* command slot of analog axis `axis` in the current control type */
 static int axis_slot(int axis) {
@@ -256,17 +271,11 @@ static void stick_to_slot(uint32_t slot, int axis, int32_t v) {
 }
 
 static void camera_stick(void) {
-    uint8_t rx, ry;
-    pad_get_right_stick(0, &rx, &ry);
-    float x = (float)(rx - 128) / 127.0f, y = (float)(ry - 128) / 127.0f;
-    x = x < -1 ? -1 : x > 1 ? 1 : x;
-    y = y < -1 ? -1 : y > 1 ? 1 : y;
-    float m = sqrtf(x * x + y * y), dz = (float)g_cam_stick_dead_zone / 100.0f, s = 0;
-    if (m > dz) {
-        float t = (m - dz) / (1 - dz);
-        s = powf(t > 1 ? 1 : t, g_cam_stick_curve) / m; /* radial dead zone and curve */
-    }
-    float k = 4096.0f * (float)g_cam_stick_speed / 100.0f * s;
+    uint8_t rx, ry, lx, ly;
+    float x, y;
+    pad_get_sticks(0, &rx, &ry, &lx, &ly);
+    stick_shape(rx, ry, g_cam_stick_curve, &x, &y);
+    float k = 4096.0f * (float)g_cam_stick_speed / 100.0f;
     int32_t turn = (int32_t)lroundf(-x * k), look = (int32_t)lroundf(y * k);
     if (mem_r8(OPTIONS + 0x0E))
         look = -look;
@@ -274,6 +283,32 @@ static void camera_stick(void) {
         stick_to_slot(CMD_TURN, 2, turn);
     if (axis_slot(3) == 1)
         stick_to_slot(CMD_LOOK, 3, look);
+}
+
+/* Movement stick: the left stick's processed values (pad state +0x00
+ * left X, +0x04 left Y; right/up = -4096/+4096) are replaced with the stick
+ * as it is now, linear past the dead zone, right before the command block
+ * is built from them (0x80032530), which maps them through the control
+ * type and derives the move direction (+0x10, ratan2) and magnitude
+ * (+0x14). */
+static void movement_stick(void) {
+    uint8_t rx, ry, lx, ly;
+    float x, y;
+    pad_get_sticks(0, &rx, &ry, &lx, &ly);
+    stick_shape(lx, ly, 1.0f, &x, &y);
+    mem_w32(PAD0_AXES + 0, (uint32_t)(int32_t)lroundf(-x * 4096.0f));
+    mem_w32(PAD0_AXES + 4, (uint32_t)(int32_t)lroundf(-y * 4096.0f));
+}
+
+static bool player_input_live(void) {
+    return mem_r32(PLAYER_OBJ_PTR) && mem_r32(DEMO_PLAYBACK) == 0;
+}
+
+void ALIEN_80032530__orig(CPU *c);
+void ALIEN_80032530(CPU *c) {
+    if (g_stick_direct && player_input_live())
+        movement_stick();
+    ALIEN_80032530__orig(c);
 }
 
 /* command value that changes the game's (cmd * rate) >> 12 by exactly
@@ -316,7 +351,7 @@ void ALIEN_8005ECBC__orig(CPU *c);
 void ALIEN_8005ECBC(CPU *c) {
     uint32_t obj = c->r[4];
     if (obj && obj == mem_r32(PLAYER_OBJ_PTR) && mem_r32(DEMO_PLAYBACK) == 0) {
-        if (g_cam_stick)
+        if (g_stick_direct)
             camera_stick();
         camera_mouse(obj);
     }

@@ -278,38 +278,46 @@ nothing changes during attract demos (which run with the game's infinite
 health cheat anyway). At 100 % the wrappers write nothing. See
 [FINDINGS](FINDINGS.md#damage-and-messages-gameplay) for the routines.
 
-### Camera
+### Camera and sticks
 
-In the original, the camera stick is a turning speed: full deflection turns
-26 units (2.3°) per frame at the default Turn speed, nothing happens until
-the stick is 38% of the way out (the game's STICK DEAD ZONE option), and
-input reaches the game two frames after the controller reports it, averaged
-over samples. Mouse look that drives the stick inherits all of that: slow
-movements vanish in the dead zone and fast ones are capped.
+In the original, the sticks reach the game two frames after the controller
+reports them, averaged over samples, and nothing happens until a stick is
+38% of the way out (the game's STICK DEAD ZONE option). The camera stick is
+a turning speed: full deflection turns 26 units (2.3°) per frame at the
+default Turn speed. Mouse look that drives the stick inherits all of that:
+slow movements vanish in the dead zone and fast ones are capped. Movement
+loses the same two frames, and half a push walks at only 18% speed.
 
-The player update (`0x8005ECBC`) is wrapped; right before it reads the
-command block (turn `+0x00`, look `+0x04`, see
+The sticks are read from the emulated controller port as the frontend set
+them at the last vblank (`pad_get_sticks`), with a radial dead zone (default
+10%; values at or past the edge are kept, so full diagonals stay full).
+Two wrappers apply them (see
 [FINDINGS](FINDINGS.md#camera-and-controller-input-gameplay)):
 
-* **Mouse look** (`camera_mouse`): the frontend accumulates mouse motion as
-  camera angle (sensitivity × 0.2 game units, 4096 = a full turn, per
-  count) in `g_cam_mouse_x/y`; the wrapper converts it to command values
-  with the inverse of the game's turn/look rate for the current state, so
-  the rounded result is exactly the wanted angle (the fraction carries
-  over). No dead zone, no speed limit, no delay; Invert Y follows the game's
-  option; the pitch limit is the game's. Motion is dropped if the game has
-  not turned for 4 vblanks (menus, pause), so it is never applied late.
-* **Responsive stick** (`camera_stick`, on by default): when the current
-  control type maps the right stick to turn/look, those slots are computed
-  from the stick as set at the last vblank (`pad_get_right_stick`), with a
-  radial dead zone (default 10%), a response curve (Linear / Smooth 1.5 /
-  Precise 2.2) and a speed (default 150% of the game's). A larger d-pad
-  value in the same slot still wins, as in the game. `--original-stick`
-  leaves the game's handling alone.
+* **Movement** (`movement_stick`, wrapper of the command block builder
+  `0x80032530`): the left stick's processed pad values (`+0x00`, `+0x04`)
+  are replaced, linearly, right before the builder maps them through the
+  control type and derives the move direction and magnitude, so the game
+  does the rest as usual.
+* **Camera stick** (`camera_stick`, wrapper of the player update
+  `0x8005ECBC`): when the control type maps the right stick to turn/look,
+  those command slots are computed with a response curve (Linear / Smooth
+  1.5 / Precise 2.2) and a speed (default 150% of the game's). A larger
+  d-pad value in the same slot still wins, as in the game.
+* **Mouse look** (`camera_mouse`, same wrapper): the frontend accumulates
+  mouse motion as camera angle (sensitivity × 0.2 game units, 4096 = a full
+  turn, per count) in `g_cam_mouse_x/y`; the wrapper converts it to command
+  values with the inverse of the game's turn/look rate for the current
+  state, so the rounded result is exactly the wanted angle (the fraction
+  carries over). No dead zone, no speed limit, no delay; Invert Y follows
+  the game's option; the pitch limit is the game's. Motion is dropped if
+  the game has not turned for 4 vblanks (menus, pause), so it is never
+  applied late.
 
-Nothing changes during attract demos, and with the right stick centred and
-no mouse input the command block is what the game built (headless runs are
-identical to the original).
+"Responsive sticks" (on by default) covers both sticks; `--original-stick`
+leaves the game's handling alone. Nothing changes during attract demos, and
+with the sticks centred and no mouse input the command block is what the
+game built (headless runs are identical to the original).
 
 ### Option defaults
 

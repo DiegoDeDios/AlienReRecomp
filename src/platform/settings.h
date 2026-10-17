@@ -66,11 +66,12 @@ typedef struct Settings {
     /* input */
     bool mouse_look;
     float mouse_sens;
-    /* camera: the right stick read directly (no delay, own dead zone) */
-    bool cam_stick;
-    int stick_speed;         /* percent of the game's turn/look speed */
-    int stick_dead_zone;     /* percent of the stick's travel */
-    int stick_curve;         /* index into g_stick_curves */
+    /* sticks: both read directly (no delay, own dead zone); speed and
+     * curve apply to the camera stick */
+    bool stick_direct;
+    int stick_speed;         /* camera: percent of the game's turn/look speed */
+    int stick_dead_zone;     /* both sticks: percent of the stick's travel */
+    int stick_curve;         /* camera: index into g_stick_curves */
     int key[ACT_COUNT][KEY_SLOTS];
     int pad[ACT_COUNT];
 } Settings;

@@ -16,7 +16,7 @@
 #     invulnerability (options +0x20) cleared at frame 2600 and demo
 #     playback (0x800A48C4) stopped at 2633, so the HUD shows and the alien
 #     that arrives at ~2640 attacks for real. The scene relies on the demo's
-#     last camera input carrying over, as in the game's own stick handling
+#     last stick input carrying over, as in the game's own stick handling
 #     (--original-stick).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -31,6 +31,8 @@ command -v ffmpeg > /dev/null || { echo "ffmpeg is required" >&2; exit 1; }
 
 NEW_GAME=(--press 620:cross)
 ALIEN_SCENE=(--poke 2600:80096bdc:0:1 --poke 2633:800a48c4:0 --original-stick)
+# ignore connected controllers: the launcher would name them on screen
+export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT=0x0000/0x0000
 
 headless() {
     rm -rf "$TMP/save" && mkdir -p "$TMP/save"

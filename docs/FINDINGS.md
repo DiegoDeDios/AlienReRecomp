@@ -203,8 +203,14 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   port's first two axes at `+0x108` (unmapped in the dual-stick layouts;
   presumably the PlayStation Mouse of the mouse control types), and of the
   buttons. In the default dual-stick layout: right X → `+0x00` turn, right Y
-  → `+0x04` look, left Y → `+0x08` forward, left X → `+0x0C` strafe. The
-  game's Invert Y (options `+0x0E`) is applied here. `+0x18` set means look
+  → `+0x04` look, left Y → `+0x08` forward, left X → `+0x0C` strafe (pad
+  axes are negated deflection: right = −4096, up = +4096). Direction
+  buttons such as the d-pad set the slot they are mapped to to ±4096
+  (±2048 with `+0x30` set). At the end the builder sets the direction bits of `+0x38`
+  (`0x0F00`) from forward/strafe if no direction button is held, negates
+  look unless Invert Y (options `+0x0E`) is on, and derives the move
+  direction `+0x10` = `ratan2(strafe, forward)` and magnitude `+0x14` =
+  `SquareRoot0(forward² + strafe²)`, at most 4096. `+0x18` set means look
   works as a speed (dual-stick layouts).
 * Turning (player update): yaw += turn × rate >> 12, rate = TURN SPEED
   (options `+0x11`) × 27 / 8 + 13, or × 5 / 2 + 10 while swimming (stance

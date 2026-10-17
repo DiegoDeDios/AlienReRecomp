@@ -41,9 +41,9 @@ void pad_set_analog(int port, uint8_t rx, uint8_t ry, uint8_t lx, uint8_t ly) {
     p->rx = rx, p->ry = ry, p->lx = lx, p->ly = ly;
 }
 
-void pad_get_right_stick(int port, uint8_t *rx, uint8_t *ry) {
+void pad_get_sticks(int port, uint8_t *rx, uint8_t *ry, uint8_t *lx, uint8_t *ly) {
     const Pad *p = &g_pad[port & 1];
-    *rx = p->rx, *ry = p->ry;
+    *rx = p->rx, *ry = p->ry, *lx = p->lx, *ly = p->ly;
 }
 
 static void sio_ack_event(int64_t now, int64_t late) {
