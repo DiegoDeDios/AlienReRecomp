@@ -1481,7 +1481,8 @@ extern "C" bool launcher_run(SDL_Window *win, Settings *cfg, Settings *saved, co
         if (L.dev)
             SDL_DestroyGPUDevice(L.dev);
         L.dev = nullptr;
-        return cfg->disc[0] != 0; /* fall back to starting directly */
+        platform_show_gpu_error(win);
+        return false;
     }
     SDL_SetGPUSwapchainParameters(L.dev, win, SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
                                   SDL_GPU_PRESENTMODE_VSYNC);

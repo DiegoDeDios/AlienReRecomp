@@ -22,6 +22,9 @@ extern "C" {
  * On success cfg->disc holds the validated .cue path. */
 bool launcher_run(SDL_Window *win, Settings *cfg, Settings *saved, const char *path);
 
+/* Error dialog when no GPU API can be used (main.c) */
+void platform_show_gpu_error(SDL_Window *win);
+
 /* Testing/docs: render `page` ("main", "settings", "controls") to a PNG at
  * `path` instead of running interactively. Call before launcher_run. */
 void launcher_debug_shot(const char *path, const char *page);
