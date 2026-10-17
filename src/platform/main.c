@@ -357,6 +357,32 @@ static void audio_rate_control(void) {
     SDL_SetAudioStreamFrequencyRatio(g_audio, ratio);
 }
 
+/* SDL's own log (e.g. why a GPU backend was rejected) goes where ours goes:
+ * the console, or alien.log on Windows */
+static void SDLCALL sdl_log_output(void *ud, int category, SDL_LogPriority prio, const char *msg) {
+    (void)ud, (void)category, (void)prio;
+    fprintf(stderr, "[SDL] %s\n", msg);
+}
+
+/* No usable GPU API: tell the player instead of quitting silently. */
+void platform_show_gpu_error(SDL_Window *win) {
+    char text[1400];
+    snprintf(text, sizeof text,
+#ifdef __APPLE__
+             "Alien Resurrection needs a Mac with Metal graphics, and no Metal device "
+             "could be opened.\n\n"
+#else
+             "Alien Resurrection needs a graphics card with Vulkan or Direct3D 12 "
+             "support, and neither could be used.\n\n"
+             "Update the graphics driver. In a virtual machine, make sure 3D "
+             "acceleration is enabled.\n\n"
+#endif
+             "Details are in alien.log in:\n%s",
+             platform_data_dir());
+    LOGE("main", "no usable GPU device");
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Alien Resurrection", text, win);
+}
+
 const char *platform_data_dir(void) {
     static char dir[1024];
     if (!dir[0] && opt.save_dir) {
@@ -1170,6 +1196,8 @@ int main(int argc, char **argv) {
         win32_setup_console(platform_data_dir());
     }
 #endif
+    SDL_SetLogOutputFunction(sdl_log_output, NULL);
+    SDL_SetLogPriority(SDL_LOG_CATEGORY_GPU, SDL_LOG_PRIORITY_INFO);
     if (!headless) {
         settings_load(&g_cfg, settings_path());
     }
@@ -1284,6 +1312,7 @@ int main(int argc, char **argv) {
         g_gpu_ok = render_init(g_win, &rc);
         if (!g_gpu_ok && !opt.headless) {
             fprintf(stderr, "GPU initialisation failed\n");
+            platform_show_gpu_error(g_win);
             return 1;
         }
     }

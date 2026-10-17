@@ -51,13 +51,24 @@ static bool hlsl_shaders_compile(void) {
 
 #ifndef __APPLE__
 static SDL_GPUDevice *try_device(SDL_GPUShaderFormat fmt, const char *name) {
-    if (!SDL_GPUSupportsShaderFormats(fmt, name)) {
+    SDL_PropertiesID p = SDL_CreateProperties();
+    SDL_SetStringProperty(p, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, name);
+    SDL_SetBooleanProperty(p, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, false);
+    SDL_SetBooleanProperty(p, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN,
+                           (fmt & SDL_GPU_SHADERFORMAT_SPIRV) != 0);
+    SDL_SetBooleanProperty(p, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_DXBC_BOOLEAN,
+                           (fmt & SDL_GPU_SHADERFORMAT_DXBC) != 0);
+    /* The renderer and the launcher use no storage resources, so Direct3D
+     * 12 devices with only Resource Binding Tier 1 are fine (SDL requires
+     * Tier 2 by default). Virtual GPUs, e.g. in Parallels, report Tier 1. */
+    SDL_SetBooleanProperty(p, SDL_PROP_GPU_DEVICE_CREATE_D3D12_ALLOW_FEWER_RESOURCE_SLOTS_BOOLEAN,
+                           true);
+    SDL_GPUDevice *d = NULL;
+    if (!SDL_GPUSupportsProperties(p))
         LOGW("render", "%s: not supported on this system", name);
-        return NULL;
-    }
-    SDL_GPUDevice *d = SDL_CreateGPUDevice(fmt, false, name);
-    if (!d)
+    else if (!(d = SDL_CreateGPUDeviceWithProperties(p)))
         LOGW("render", "%s unavailable: %s", name, SDL_GetError());
+    SDL_DestroyProperties(p);
     return d;
 }
 #endif
