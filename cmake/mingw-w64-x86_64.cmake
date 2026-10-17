@@ -3,8 +3,12 @@
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)
 set(TOOLCHAIN_PREFIX x86_64-w64-mingw32)
-set(CMAKE_C_COMPILER ${TOOLCHAIN_PREFIX}-gcc)
-set(CMAKE_CXX_COMPILER ${TOOLCHAIN_PREFIX}-g++)
+# Debian/Ubuntu install win32- and posix-thread variants side by side; the
+# launcher uses C++ threads, so prefer posix
+find_program(_mingw_cc NAMES ${TOOLCHAIN_PREFIX}-gcc-posix ${TOOLCHAIN_PREFIX}-gcc REQUIRED)
+find_program(_mingw_cxx NAMES ${TOOLCHAIN_PREFIX}-g++-posix ${TOOLCHAIN_PREFIX}-g++ REQUIRED)
+set(CMAKE_C_COMPILER ${_mingw_cc})
+set(CMAKE_CXX_COMPILER ${_mingw_cxx})
 set(CMAKE_RC_COMPILER ${TOOLCHAIN_PREFIX}-windres)
 # look for libraries/headers (SDL3) only in the target prefixes
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)

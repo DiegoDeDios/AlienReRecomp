@@ -1,9 +1,14 @@
 /*
- * Reference MIPS I interpreter with branch- and load-delay semantics.
+ * MIPS I interpreter with branch- and load-delay semantics.
  *
- * Used (1) as a fallback when control reaches an address without a
- * recompiled function and (2) by the lockstep verifier, which runs a
- * function both ways and compares the outcome.
+ * Used (1) to run all of the game's code in interpreted builds, which
+ * contain no game code (g_interp_only), (2) as a fallback when control
+ * reaches an address without a recompiled function and (3) by the lockstep
+ * verifier, which runs a function both ways and compares the outcome.
+ *
+ * Like the recompiled code it calls the native overrides (native.c) when
+ * control reaches their addresses, and feeds precision geometry (PGXP) the
+ * same register/memory moves of projected vertices.
  */
 #include "psx.h"
 
@@ -80,10 +85,18 @@ void interp_run(CPU *c, uint32_t pc, uint32_t stop_ra) {
             case 0x19: { uint64_t m = (uint64_t)RS * RT; c->lo = (uint32_t)m; c->hi = (uint32_t)(m >> 32); break; }
             case 0x1A: cpu_div(c, RS, RT); break;
             case 0x1B: cpu_divu(c, RS, RT); break;
-            case 0x20: case 0x21: wr_reg = rd; wr_val = RS + RT; break;
+            case 0x20: case 0x21:
+                wr_reg = rd; wr_val = RS + RT;
+                if (fn == 0x21 && rd && (rs == 0) != (rt == 0))
+                    PGXP_MOV((int)rd, (int)(rs ? rs : rt));
+                break;
             case 0x22: case 0x23: wr_reg = rd; wr_val = RS - RT; break;
             case 0x24: wr_reg = rd; wr_val = RS & RT; break;
-            case 0x25: wr_reg = rd; wr_val = RS | RT; break;
+            case 0x25:
+                wr_reg = rd; wr_val = RS | RT;
+                if (rd && (rs == 0) != (rt == 0))
+                    PGXP_MOV((int)rd, (int)(rs ? rs : rt));
+                break;
             case 0x26: wr_reg = rd; wr_val = RS ^ RT; break;
             case 0x27: wr_reg = rd; wr_val = ~(RS | RT); break;
             case 0x2A: wr_reg = rd; wr_val = (int32_t)RS < (int32_t)RT; break;
@@ -106,11 +119,19 @@ void interp_run(CPU *c, uint32_t pc, uint32_t stop_ra) {
         case 0x05: is_branch = true; take = RS != RT; target = pc + 4 + (simm << 2); break;
         case 0x06: is_branch = true; take = (int32_t)RS <= 0; target = pc + 4 + (simm << 2); break;
         case 0x07: is_branch = true; take = (int32_t)RS > 0; target = pc + 4 + (simm << 2); break;
-        case 0x08: case 0x09: wr_reg = rt; wr_val = RS + simm; break;
+        case 0x08: case 0x09:
+            wr_reg = rt; wr_val = RS + simm;
+            if (imm == 0 && rs && rt)
+                PGXP_MOV((int)rt, (int)rs);
+            break;
         case 0x0A: wr_reg = rt; wr_val = (int32_t)RS < (int32_t)simm; break;
         case 0x0B: wr_reg = rt; wr_val = RS < simm; break;
         case 0x0C: wr_reg = rt; wr_val = RS & imm; break;
-        case 0x0D: wr_reg = rt; wr_val = RS | imm; break;
+        case 0x0D:
+            wr_reg = rt; wr_val = RS | imm;
+            if (imm == 0 && rs && rt)
+                PGXP_MOV((int)rt, (int)rs);
+            break;
         case 0x0E: wr_reg = rt; wr_val = RS ^ imm; break;
         case 0x0F: wr_reg = rt; wr_val = imm << 16; break;
         case 0x10:
@@ -120,25 +141,48 @@ void interp_run(CPU *c, uint32_t pc, uint32_t stop_ra) {
             break;
         case 0x12:
             if (rs & 0x10) gte_command(c, w & 0x1FFFFFF);
-            else if (rs == 0) { pend.reg = (int)rt; pend.val = gte_read_data(c, (int)rd); }
+            else if (rs == 0) {
+                pend.reg = (int)rt; pend.val = gte_read_data(c, (int)rd);
+                if (rd >= 12 && rd <= 15 && rt)
+                    PGXP_MFC2((int)rt, (int)rd);
+            }
             else if (rs == 2) { pend.reg = (int)rt; pend.val = gte_read_ctrl(c, (int)rd); }
-            else if (rs == 4) gte_write_data(c, (int)rd, RT);
+            else if (rs == 4) {
+                gte_write_data(c, (int)rd, RT);
+                if (rd >= 12 && rd <= 15)
+                    PGXP_MTC2((int)rd, (int)rt);
+            }
             else if (rs == 6) gte_write_ctrl(c, (int)rd, RT);
             break;
         case 0x20: pend.reg = (int)rt; pend.val = (uint32_t)(int32_t)(int8_t)mem_r8(RS + simm); break;
         case 0x21: pend.reg = (int)rt; pend.val = sx16(mem_r16(RS + simm)); break;
         case 0x22: { uint32_t base = (cur_load.reg == (int)rt) ? cur_load.val : RT; pend.reg = (int)rt; pend.val = mem_lwl(base, RS + simm); break; }
-        case 0x23: pend.reg = (int)rt; pend.val = mem_r32(RS + simm); break;
+        case 0x23:
+            pend.reg = (int)rt; pend.val = mem_r32(RS + simm);
+            if (rt)
+                PGXP_LW((int)rt, RS + simm);
+            break;
         case 0x24: pend.reg = (int)rt; pend.val = mem_r8(RS + simm); break;
         case 0x25: pend.reg = (int)rt; pend.val = mem_r16(RS + simm); break;
         case 0x26: { uint32_t base = (cur_load.reg == (int)rt) ? cur_load.val : RT; pend.reg = (int)rt; pend.val = mem_lwr(base, RS + simm); break; }
         case 0x28: mem_w8(RS + simm, RT); break;
         case 0x29: mem_w16(RS + simm, RT); break;
         case 0x2A: mem_swl(RS + simm, RT); break;
-        case 0x2B: mem_w32(RS + simm, RT); break;
+        case 0x2B:
+            mem_w32(RS + simm, RT);
+            PGXP_SW(RS + simm, (int)rt);
+            break;
         case 0x2E: mem_swr(RS + simm, RT); break;
-        case 0x32: gte_write_data(c, (int)rt, mem_r32(RS + simm)); break;
-        case 0x3A: mem_w32(RS + simm, gte_read_data(c, (int)rt)); break;
+        case 0x32:
+            gte_write_data(c, (int)rt, mem_r32(RS + simm));
+            if (rt >= 12 && rt <= 15)
+                PGXP_LWC2((int)rt, RS + simm);
+            break;
+        case 0x3A:
+            mem_w32(RS + simm, gte_read_data(c, (int)rt));
+            if (rt >= 12 && rt <= 15)
+                PGXP_SWC2(RS + simm, (int)rt);
+            break;
         default: hle_invalid(c, pc, w);
         }
 
@@ -180,7 +224,28 @@ void interp_run(CPU *c, uint32_t pc, uint32_t stop_ra) {
                 next_pc = pc + 4;
                 continue;
             }
-            if (take && link && g_interp_call_native &&
+            if (take && g_interp_only) {
+                RecompFunc ov = native_lookup(target);
+                if (ov) {
+                    /* native override: run the delay slot, then the native
+                     * function as a call (jal/jalr) or a tail call (j/jr,
+                     * returning to the current ra) */
+                    uint32_t ret = pc + 8;
+                    interp_run(c, pc + 4, pc + 8);
+                    if (link)
+                        c->r[link_reg] = ret;
+                    uint32_t back = link ? ret : c->r[31];
+                    ov(c);
+                    pc = back;
+                    next_pc = pc + 4;
+                    if (pend.reg) {
+                        c->r[pend.reg] = pend.val;
+                        pend.reg = 0;
+                    }
+                    continue;
+                }
+            }
+            if (take && link && g_interp_call_native && !g_interp_only &&
                 module_lookup(target)) {
                 /* run delay slot first */
                 uint32_t ds = pc + 4;

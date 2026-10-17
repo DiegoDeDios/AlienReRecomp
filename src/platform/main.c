@@ -1013,6 +1013,10 @@ static void parse_args(int argc, char **argv) {
         } else if (!strcmp(a, "--gpu-driver") && v) {
             /* Windows: auto, vulkan or direct3d12 */
             snprintf(g_cfg.gpu_driver, sizeof g_cfg.gpu_driver, "%s", v), i++;
+        } else if (!strcmp(a, "--interpret")) {
+            /* development: run the game code in the interpreter even in a
+             * recompiled build (as interpreted release builds do) */
+            g_interp_only = true;
         } else if (!strcmp(a, "--no-pgxp")) {
             g_cfg.pgxp = false;
         } else if (!strcmp(a, "--no-infinite-flashlight")) {
@@ -1158,6 +1162,9 @@ int main(int argc, char **argv) {
             opt.save_dir = argv[++i];
     }
 #ifdef _WIN32
+    /* window icon from the executable's icon resource (alien.rc) */
+    SDL_SetHint(SDL_HINT_WINDOWS_INTRESOURCE_ICON, "1");
+    SDL_SetHint(SDL_HINT_WINDOWS_INTRESOURCE_ICON_SMALL, "1");
     {
         void win32_setup_console(const char *data_dir);
         win32_setup_console(platform_data_dir());

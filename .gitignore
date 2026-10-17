@@ -17,6 +17,7 @@ reference/
 build*/
 out/
 *.png
+!packaging/icon/*.png
 *.wav
 saves/
 

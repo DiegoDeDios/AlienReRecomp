@@ -1,0 +1,65 @@
+# Builds the release packages. They contain no game code or data: players
+# point the app at their own Alien Resurrection (USA) disc image, and the
+# game's code is interpreted from it (GAME_CODE=interpreted). That is also
+# why no disc image is needed here.
+#
+# Runs on demand (Actions > Release builds > Run workflow) and for version
+# tags (v*). A tag also creates a *draft* GitHub release with both packages
+# attached; review and publish it by hand.
+name: Release builds
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+    # builds only (no release) while the workflow is not on the default
+    # branch yet, where "Run workflow" becomes available; remove after merge
+    branches: ["feature/code-free-release"]
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tools
+        run: brew install ninja
+      - name: Build AlienResurrection.app (universal)
+        run: tools/build_macos_app.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos
+          path: build-mac/release/*.zip
+
+  windows:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 cmake ninja-build zip
+      - name: Build AlienResurrection.exe (cross-compiled)
+        run: tools/build_windows.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: build-win/release/*.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft \
+            --title "Alien Resurrection native port $GITHUB_REF_NAME" \
+            --notes-file packaging/RELEASE_NOTES.md \
+            dist/macos/*.zip dist/windows/*.zip

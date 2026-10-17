@@ -367,3 +367,34 @@ player's save game still take precedence (the game restores them at boot).
 * Verified under Wine 11: scripted headless runs (boot, FMV, LoadExec, new
   game) leave RAM, screenshots and memory cards byte-identical to the macOS
   build.
+
+## Game code: recompiled or interpreted
+
+`GAME_CODE` (CMake) selects how the game's MIPS code runs.
+
+* **Recompiled** (development): the C translated by `tools/recomp.py` from
+  the player's disc (`src/gen`) is linked in. The binary therefore contains
+  the game's code.
+* **Interpreted** (releases): `src/runtime/nogen.c` provides empty module
+  tables instead, so the binary contains none of the game. `LoadExec` loads
+  the executables from the disc into emulated RAM as always, and every call
+  goes to the interpreter (`interp.c`, `g_interp_only`).
+* **Native hooks** work in both: `cmake/overrides_table.cmake` turns the
+  recompiler's `tools/overrides_*.txt` lists into `g_native_overrides`
+  (module, address, native function). The interpreter checks every taken
+  branch target against a bitmap of the active module's override addresses
+  and calls the native function as a call or tail call; in interpreted
+  builds each wrapper's `NAME__orig` interprets the original function.
+* **PGXP**: the interpreter feeds the same register/memory moves of
+  projected vertices as the recompiled code (`lw`/`sw`, `lwc2`/`swc2`,
+  `mfc2`/`mtc2`, `addu`/`or`/`addiu`/`ori` register moves).
+* **Equivalence**: the interpreter services events every 64 instructions
+  rather than at loop back-edges, so RAM contents drift slightly from the
+  recompiled build, but enhancements behave identically (sprint distance,
+  option defaults) and hardware-rendered frames differ in under 0.1% of
+  pixels. Interpreted builds are deterministic across platforms: macOS
+  (arm64, x86_64) and Windows (under Wine) produce identical RAM, frames
+  and memory cards for the same scripted session.
+* **Speed** on an Apple M1: about 3× real time in gameplay, 2.5× in the
+  heaviest stretch (4× internal resolution, hardware renderer); the Intel
+  slice under Rosetta about 1.9×.

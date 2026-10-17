@@ -2,9 +2,11 @@ Alien Resurrection - native port for Windows
 =============================================
 
 A native version of the PlayStation game Alien Resurrection (USA), made by
-statically recompiling the original executables. You need your own copy of
+reverse engineering the original executables. You need your own copy of
 the game: a disc image of Alien Resurrection (USA, SLUS-00633) as a .cue
-sheet with its .bin track files. No game data is included.
+sheet with its .bin track files. This download contains no part of the
+game - neither data nor code. The game's code is read from your disc image
+when you play.
 
 Requirements
 ------------
@@ -29,6 +31,7 @@ Settings (config.ini), memory card saves (memcard0.mcr) and the log file
 
 Troubleshooting
 ---------------
+- The game stutters on an older PC: lower Settings > Frame rate boost.
 - The game does not start or looks wrong: in Settings, change "Graphics
   API" to Direct3D 12 (or Vulkan), then restart.
 - alien.log in the folder above records what happened; include it when

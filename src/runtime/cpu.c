@@ -69,6 +69,7 @@ extern const unsigned slus_resume_count;
 
 static Module g_modules[2];
 static const Module *g_mod;
+static void overrides_activate(const Module *m);
 
 static void modules_setup(void) {
     if (g_modules[0].name)
@@ -89,7 +90,11 @@ const Module *module_find_by_exe(const char *name) {
 
 void module_activate(const Module *m) {
     g_mod = m;
-    LOGI("cpu", "active module: %s (%u functions)", m->name, m->nfuncs);
+    overrides_activate(m);
+    if (g_interp_only)
+        LOGI("cpu", "active module: %s (interpreted from the disc)", m->name);
+    else
+        LOGI("cpu", "active module: %s (%u functions)", m->name, m->nfuncs);
 }
 
 const Module *module_current(void) { return g_mod; }
@@ -125,11 +130,52 @@ const char *module_func_name(uint32_t addr) {
 /* Interpreter fallback (runtime/interp.c) */
 void interp_call(CPU *c, uint32_t addr);
 
+#ifdef GAME_CODE_INTERPRETED
+bool g_interp_only = true;
+#else
+bool g_interp_only; /* --interpret: run the game code in the interpreter */
+#endif
+
+/* native overrides of the active module: bitmap of their addresses (one
+ * bit per RAM word) so the interpreter can test branch targets cheaply */
+static uint8_t g_ov_bits[0x200000 / 4 / 8];
+
+static void overrides_activate(const Module *m) {
+    memset(g_ov_bits, 0, sizeof g_ov_bits);
+    for (unsigned i = 0; i < g_native_override_count; i++)
+        if (!strcasecmp(g_native_overrides[i].module, m->name)) {
+            uint32_t w = (g_native_overrides[i].addr & 0x1FFFFFu) >> 2;
+            g_ov_bits[w >> 3] |= (uint8_t)(1u << (w & 7));
+        }
+}
+
+RecompFunc native_lookup(uint32_t addr) {
+    uint32_t p = addr & 0x1FFFFFFFu;
+    if (p >= 0x200000u)
+        return NULL;
+    uint32_t w = p >> 2;
+    if (!(g_ov_bits[w >> 3] & (1u << (w & 7))) || !g_mod)
+        return NULL;
+    uint32_t a = 0x80000000u | p;
+    for (unsigned i = 0; i < g_native_override_count; i++)
+        if (g_native_overrides[i].addr == a && !strcasecmp(g_native_overrides[i].module, g_mod->name))
+            return g_native_overrides[i].fn;
+    return NULL;
+}
+
 void call_indirect(CPU *c, uint32_t addr) {
     uint32_t p = addr & 0x1FFFFFFFu;
     if (p == 0xA0) { bios_call_A0(c); return; }
     if (p == 0xB0) { bios_call_B0(c); return; }
     if (p == 0xC0) { bios_call_C0(c); return; }
+    if (g_interp_only) {
+        RecompFunc ov = native_lookup(addr);
+        if (ov)
+            ov(c);
+        else
+            interp_call(c, addr);
+        return;
+    }
     RecompFunc f = module_lookup(addr);
     if (likely(f != NULL)) {
         f(c);
@@ -155,7 +201,7 @@ void guest_call(CPU *c, uint32_t addr) {
 
 void guest_resume(CPU *c, uint32_t addr) {
     uint32_t a = 0x80000000u | (addr & 0x1FFFFFFFu);
-    if (g_mod) {
+    if (g_mod && !g_interp_only) {
         for (unsigned i = 0; i < g_mod->nresume; i++) {
             if (g_mod->resume[i].addr == a) {
                 g_mod->resume[i].fn(c, a);
@@ -163,12 +209,13 @@ void guest_resume(CPU *c, uint32_t addr) {
             }
         }
     }
-    RecompFunc f = module_lookup(a);
+    RecompFunc f = g_interp_only ? NULL : module_lookup(a);
     if (f) {
         f(c);
         return;
     }
-    LOGW("cpu", "resume at %08X: no entry, interpreting", a);
+    if (!g_interp_only)
+        LOGW("cpu", "resume at %08X: no entry, interpreting", a);
     interp_call(c, a);
 }
 
