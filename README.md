@@ -7,9 +7,12 @@ small runtime that stands in for the PlayStation's BIOS and hardware, drawn
 by a modern GPU renderer at high resolution, in widescreen, at a steady 60
 fps, with mouse and keyboard controls and optional gameplay tweaks.
 
-**This repository contains no game data. You need your own copy of the game
-(the USA disc image) to build and play.** The screenshots and animations
-below are captured from the game for illustration.
+**This repository and the release downloads contain no part of the game,
+neither data nor code. You need your own copy of the game (the USA disc
+image) to play:** the downloadable apps for macOS and Windows read the
+game's code from your disc image and run it in their interpreter. The
+screenshots and animations below are captured from the game for
+illustration.
 
 | PlayStation (240p, 4:3) | This port (16:9, 3x resolution, precision geometry) |
 | --- | --- |
@@ -182,6 +185,7 @@ applying on the next start. **Quit to desktop** is there too.
 | Main executable (`ALIEN.BIN`): menus, options, level 1 gameplay | working (playtesting) |
 | Hardware renderer (Metal on macOS; Vulkan / Direct3D 12 on Windows), upscaled | working |
 | Windows build (cross-compiled with MinGW-w64) | working under Wine; real Windows testing pending |
+| Release packages without game code (interpreter): macOS .app (universal), Windows .exe | working |
 | Widescreen (16:9 / 16:10 / 21:9 / 32:9) | working (hardware renderer) |
 | Steady 60 fps (CPU headroom), vsync without tearing | working |
 | Precision geometry (no vertex wobble, perspective-correct textures) | working (hardware renderer) |
@@ -244,10 +248,46 @@ Sony PsyQ library functions, and regenerates the recompiled C code in
 needs `reference/psx_psyq_signatures`
 (https://github.com/lab313ru/psx_psyq_signatures).
 
+### Game code: recompiled or interpreted
+
+The CMake option `GAME_CODE` decides how the game's code runs:
+
+* `recompiled` (the default when `src/gen` exists): the C that
+  `tools/regen.sh` translated from your disc is compiled in. Fastest, and
+  what development uses. Such a binary contains the game's code, so it is
+  for your own use only.
+* `interpreted` (the default otherwise): no game code in the binary. The
+  game's executables are read from the player's disc image when they play
+  and run by the port's MIPS interpreter, with the same enhancements
+  (native hooks, precision geometry). This is what the releases use; it
+  needs no disc image to build and runs the game at 2.5× real time or more
+  on an Apple M1.
+
+`--interpret` runs a recompiled build through the interpreter, for
+comparison.
+
+### Release packages
+
+Both release scripts build `GAME_CODE=interpreted` packages; no disc image
+is needed, so the GitHub Actions workflow
+(`.github/workflows/release.yml`) can build them too: on demand, or for a
+`v*` tag, which also creates a draft GitHub release with both packages and
+`packaging/RELEASE_NOTES.md`.
+
+```bash
+tools/build_macos_app.sh
+```
+
+builds `build-mac/release/AlienResurrection-<version>-macos.zip`: a
+universal (Apple Silicon and Intel, macOS 11+) `AlienResurrection.app` with
+SDL3's official framework inside, ad-hoc signed (not notarized), plus a
+README and the licenses. The app icon is original artwork
+(`tools/make_icons.sh`).
+
 ### Windows
 
 The Windows release is cross-compiled from macOS (or Linux) with
-MinGW-w64, after `tools/regen.sh` has generated the code from your disc:
+MinGW-w64:
 
 ```bash
 brew install mingw-w64
@@ -258,7 +298,8 @@ tools/build_windows.sh
 ```
 
 The script downloads SDL3's official MinGW development package (pinned
-version, checksum verified), builds into `build-win/`, and packages
+version, checksum verified), builds into `build-win/` (interpreted; use
+`GAME_CODE=recompiled` for a local recompiled build), and packages
 `build-win/release/AlienResurrection-<version>-windows-x64.zip`: the
 executable, `SDL3.dll`, a short README and the licenses. The executable
 needs no other DLLs (Windows 10/11 ship the C runtime). Building natively on
@@ -392,7 +433,9 @@ in this port (the original defaulted to on).
 * `tools/recomp.py` translates every MIPS function of the two game
   executables (the boot loader and `ALIEN.BIN`, about 2,000 functions) into
   C, one C function per MIPS function. Sony's PsyQ library functions are
-  identified by signature.
+  identified by signature. Release builds instead interpret the original
+  machine code read from the player's disc, calling the same native hooks
+  (see [Game code](#game-code-recompiled-or-interpreted)).
 * The runtime (`src/runtime`, `src/hw`) replaces the PlayStation BIOS and
   models the hardware the game and its libraries talk to: GPU, GTE, CD-ROM,
   SPU, MDEC, DMA, timers, controllers and memory cards.
@@ -456,7 +499,9 @@ project:
   owners; they are here only to illustrate the port.
 * The C code that `tools/regen.sh` recompiles from your disc (`src/gen/`)
   is derived from the game, is not covered by this license and is not part
-  of the repository. Builds of the port contain it.
+  of the repository. Recompiled builds contain it and are for personal use;
+  the release packages are interpreted builds, which contain no game code
+  and read it from the player's own disc image.
 
 This is an independent fan project, not affiliated with or endorsed by 20th
 Century Studios, Fox Interactive or Argonaut Games. *Alien Resurrection* and

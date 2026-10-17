@@ -66,6 +66,25 @@ const Module *module_current(void);
 RecompFunc module_lookup(uint32_t addr);
 const char *module_func_name(uint32_t addr);
 
+/* How the game's code runs. Recompiled builds link the C translated from
+ * the game executables (src/gen). Interpreted builds contain no game code:
+ * the executables are read from the player's disc and interpreted
+ * (interp.c), so a release can be distributed without any of the game. */
+extern bool g_interp_only;
+
+/* Native code that replaces or wraps game functions (native.c), by module
+ * and address. Recompiled code calls it directly; the interpreter looks it
+ * up whenever control reaches one of these addresses. The table is
+ * generated from tools/overrides_*.txt (CMake, overrides_table.c). */
+typedef struct NativeOverride {
+    const char *module;   /* "ALIEN.BIN", "SLUS_006.33" */
+    uint32_t addr;
+    RecompFunc fn;
+} NativeOverride;
+extern const NativeOverride g_native_overrides[];
+extern const unsigned g_native_override_count;
+RecompFunc native_lookup(uint32_t addr); /* for the active module, or NULL */
+
 /* Run guest code at addr as a call (sets ra to a sentinel, returns when the
  * callee returns). */
 void guest_call(CPU *c, uint32_t addr);
