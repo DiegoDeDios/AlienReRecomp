@@ -23,12 +23,12 @@ jobs:
   macos:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Tools
         run: brew install ninja
       - name: Build AlienResurrection.app (universal)
         run: tools/build_macos_app.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: build-mac/release/*.zip
@@ -36,12 +36,12 @@ jobs:
   windows:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Tools
         run: sudo apt-get update && sudo apt-get install -y mingw-w64 cmake ninja-build zip
       - name: Build AlienResurrection.exe (cross-compiled)
         run: tools/build_windows.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: build-win/release/*.zip
@@ -51,8 +51,8 @@ jobs:
     needs: [macos, windows]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist
       - name: Draft release
