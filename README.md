@@ -37,6 +37,7 @@ only fully visible in widescreen.*
 * [Run](#run)
 * [How it works](#how-it-works)
 * [Credits](#credits)
+* [License](#license)
 
 ## Features
 
@@ -377,6 +378,22 @@ ffmpeg), so they can be regenerated after changes.
   by Rodrigo Copetti, for PlayStation hardware reference.
 * PGXP, originally by iCatButler for PCSX-R, for the idea behind precision
   geometry.
+
+## License
+
+The port's own source code and documentation are released under the
+[MIT License](LICENSE). That covers only what was written for this
+project:
+
+* `third_party/imgui` is Dear ImGui, under its own MIT license
+  (`third_party/imgui/LICENSE.txt`); SDL3 is used under the zlib license.
+* *Alien Resurrection* itself (its code, data, artwork, text, music and
+  trademarks) is not covered and not included. The screenshots and
+  animations in `docs/media` show the game and remain the property of its
+  owners; they are here only to illustrate the port.
+* The C code that `tools/regen.sh` recompiles from your disc (`src/gen/`)
+  is derived from the game, is not covered by this license and is not part
+  of the repository. Builds of the port contain it.
 
 This is an independent fan project, not affiliated with or endorsed by 20th
 Century Studios, Fox Interactive or Argonaut Games. *Alien Resurrection* and
