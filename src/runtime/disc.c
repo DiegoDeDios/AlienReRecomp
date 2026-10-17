@@ -53,6 +53,9 @@ bool disc_open(const char *cue_path) {
     char dir[1024];
     snprintf(dir, sizeof dir, "%s", cue_path);
     char *slash = strrchr(dir, '/');
+    char *bslash = strrchr(dir, '\\'); /* Windows paths */
+    if (bslash && (!slash || bslash > slash))
+        slash = bslash;
     if (slash)
         slash[1] = 0;
     else

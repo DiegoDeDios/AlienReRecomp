@@ -7,10 +7,21 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Last path separator in p ('/', or '\\' as Windows also uses), or NULL. */
+static inline const char *path_last_sep(const char *p) {
+    const char *a = strrchr(p, '/'), *b = strrchr(p, '\\');
+    if (!a)
+        return b;
+    if (!b)
+        return a;
+    return a > b ? a : b;
+}
 
 typedef enum {
     DISC_OK,

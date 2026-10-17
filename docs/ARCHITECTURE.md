@@ -17,7 +17,7 @@ replaced by hand-written, understood C.
    │ native executable                                         │
    │  recompiled game code ──► runtime (CPU glue, HLE BIOS, GTE)│
    │                           hardware model (GPU/SPU/CD/MDEC…) │
-   │                           renderer (Metal) + SDL3 frontend  │
+   │                           renderer (SDL GPU) + SDL3 frontend│
    └───────────────────────────────────────────────────────────┘
 ```
 
@@ -100,6 +100,23 @@ textured semi-transparent primitives are drawn in two passes so only STP
 texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
 →CPU reads download from the GPU.
 
+* **Graphics APIs** (`gpu_device.c`): Metal on macOS; on Windows Vulkan,
+  with Direct3D 12 as the fallback (only offered if the system's
+  `d3dcompiler_47.dll` compiles all of the renderer's shaders). The
+  launcher creates its device the same way.
+* **Shaders**: written once in GLSL (`shaders/`); `tools/compile_shaders.py`
+  compiles them to SPIR-V with glslang and translates that SPIR-V to HLSL
+  (shader model 5.1, compiled to DXBC at start-up on Windows) and MSL with
+  spirv-cross, following SDL's resource binding rules. The translated MSL
+  renders pixel-identically to the hand-written MSL it replaced, and the
+  Windows build's Vulkan output under Wine/MoltenVK matches it too.
+* **GPU memory**: at most two frames are in flight (`submit_frame` waits for
+  the frame before last), also without a window, and uploads within a frame
+  go to consecutive ranges of one staging buffer that is cycled once per
+  frame. Without the cap, runs without a window queued frames faster than
+  the GPU drew them; cycling on every upload made SDL allocate a buffer per
+  flush. Together these grew a headless run to tens of gigabytes.
+
 ## Frontend (`src/platform/`)
 
 * **Launcher** (`launcher.cpp`): Dear ImGui on the SDL GPU API, drawn in
@@ -110,7 +127,8 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   screen from the player's `PACK.BIN` as background art. Navigation is
   handled by the pages themselves (rows, columns in the bindings table) so
   keyboard and controller behave the same; mouse hover and clicks work too.
-  Fonts come from the system (macOS) with ImGui's built-in font as fallback.
+  Fonts come from the system (macOS: DIN, Helvetica; Windows: Bahnschrift,
+  Segoe UI) with ImGui's built-in font as fallback.
 * **In-game overlay** (F2, or Select+Start held for 20 frames): the
   launcher's Settings and Controls pages plus a pause menu, drawn with the
   game renderer's own SDL GPU device. `platform_vblank` runs the overlay
@@ -324,3 +342,28 @@ game built (headless runs are identical to the original).
 `main` (`0x80020350`) is wrapped to set the "Invert Y" option to off before
 the game starts; the original shipped with inverted look. Options saved in a
 player's save game still take precedence (the game restores them at boot).
+
+## Windows
+
+* Cross-compiled with MinGW-w64 GCC (`cmake/mingw-w64-x86_64.cmake`,
+  `tools/build_windows.sh`); MSVC is not supported because the generated
+  code uses GNU C extensions.
+* GUI program (`SDL_main.h` supplies `WinMain`). Started from a terminal it
+  attaches to that console; otherwise stdout/stderr go to `alien.log` in the
+  data folder (`src/platform/win32.c`).
+* The manifest selects UTF-8 as the process code page, so `fopen`,
+  `opendir` and friends accept the UTF-8 paths SDL hands out (user names or
+  disc folders with non-ASCII characters), plus per-monitor DPI awareness
+  and long paths.
+* Host non-local jumps (interrupt return, LoadExec) use GCC's
+  `__builtin_setjmp`/`__builtin_longjmp`: the C library's `longjmp` on
+  64-bit Windows unwinds the stack frame by frame (SEH) — slower, and not
+  what the runtime expects.
+* 16 MB main thread stack (Windows defaults to 1 MB) for deep chains of
+  recompiled guest calls; the MinGW C/C++ runtime is linked statically, so
+  the only DLL shipped is `SDL3.dll`.
+* Paths accept `\` as well as `/` (cue sheet directory, launcher), and
+  `realpath` becomes `_fullpath`.
+* Verified under Wine 11: scripted headless runs (boot, FMV, LoadExec, new
+  game) leave RAM, screenshots and memory cards byte-identical to the macOS
+  build.

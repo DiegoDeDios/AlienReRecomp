@@ -25,6 +25,7 @@
 #include "../../third_party/imgui/imgui_internal.h"
 #include "../../third_party/imgui/backends/imgui_impl_sdl3.h"
 #include "../../third_party/imgui/backends/imgui_impl_sdlgpu3.h"
+#include "../render/render.h"
 #include "discinfo.h"
 
 extern "C" int png_write_rgb(const char *path, const uint8_t *rgb, int w, int h);
@@ -207,7 +208,7 @@ void open_disc_dialog() {
         {"All files", "*"},
     };
     std::string dir;
-    const char *slash = strrchr(L.cfg->disc, '/');
+    const char *slash = path_last_sep(L.cfg->disc);
     if (slash)
         dir.assign(L.cfg->disc, (size_t)(slash - L.cfg->disc));
     L.pick_open = true;
@@ -496,7 +497,7 @@ void draw_main(ImDrawList *dl) {
                                           : L.disc_msg);
     dl->AddText(L.f_body, fs, ImVec2(mx + 18 * L.U, fy), ok ? C_TEXT : dc, line);
     if (ok) {
-        const char *base = strrchr(L.cfg->disc, '/');
+        const char *base = path_last_sep(L.cfg->disc);
         dl->AddText(L.f_body, fs * 0.85f, ImVec2(mx + 18 * L.U, fy - fs * 1.1f), C_DIM,
                     base ? base + 1 : L.cfg->disc);
     }
@@ -840,7 +841,27 @@ void draw_settings(ImDrawList *dl) {
                     "the game starts."
                   : "Synchronise with the display to avoid tearing."))
         mark(&c->vsync);
+#ifdef _WIN32
+    {
+        static const char *const apis[] = {"Automatic", "Vulkan", "Direct3D 12"};
+        static const char *const ids[] = {"auto", "vulkan", "direct3d12"};
+        int gi = 0;
+        for (int i = 0; i < 3; i++)
+            if (!strcmp(c->gpu_driver, ids[i]))
+                gi = i;
+        restart_tag(ig && strcmp(c->gpu_driver, g_render_driver) != 0);
+        if (choice("Graphics API", &gi, apis, 3,
+                   "Automatic uses Vulkan and falls back to Direct3D 12. Try the other one if "
+                   "the game does not start or looks wrong. Takes effect the next time the "
+                   "game starts.")) {
+            snprintf(c->gpu_driver, sizeof c->gpu_driver, "%s", ids[gi]);
+            mark(&c->gpu_driver);
+        }
+    }
+    if (toggle("Fullscreen", &c->fullscreen, "Also toggled in game with F11.")) {
+#else
     if (toggle("Fullscreen", &c->fullscreen, "Also toggled in game with F11 or Cmd+Ctrl+F.")) {
+#endif
         mark(&c->fullscreen);
         SDL_SetWindowFullscreen(L.win, c->fullscreen);
     }
@@ -1236,14 +1257,28 @@ const char *find_font(const char *const *paths) {
 
 void load_fonts() {
     ImGuiIO &io = ImGui::GetIO();
-    static const char *const title[] = {"/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf",
-                                        "/System/Library/Fonts/Supplemental/Futura.ttc", nullptr};
-    static const char *const label[] = {"/System/Library/Fonts/Supplemental/DIN Alternate Bold.ttf",
-                                        "/System/Library/Fonts/Avenir Next.ttc", nullptr};
-    static const char *const body[] = {"/System/Library/Fonts/Helvetica.ttc",
-                                       "/System/Library/Fonts/HelveticaNeue.ttc", nullptr};
+    static const char *const mac_title[] = {"/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf",
+                                            "/System/Library/Fonts/Supplemental/Futura.ttc", nullptr};
+    static const char *const mac_label[] = {"/System/Library/Fonts/Supplemental/DIN Alternate Bold.ttf",
+                                            "/System/Library/Fonts/Avenir Next.ttc", nullptr};
+    static const char *const mac_body[] = {"/System/Library/Fonts/Helvetica.ttc",
+                                           "/System/Library/Fonts/HelveticaNeue.ttc", nullptr};
+    const char *const *title = mac_title, *const *label = mac_label, *const *body = mac_body;
     const char *p;
     ImFont *def = io.Fonts->AddFontDefault();
+#ifdef _WIN32
+    /* Bahnschrift (Windows 10+) is a DIN typeface like the macOS fonts */
+    const char *windir = SDL_getenv("WINDIR");
+    static std::string wf[3];
+    wf[0] = std::string(windir ? windir : "C:\\Windows") + "\\Fonts\\bahnschrift.ttf";
+    wf[1] = std::string(windir ? windir : "C:\\Windows") + "\\Fonts\\segoeuib.ttf";
+    wf[2] = std::string(windir ? windir : "C:\\Windows") + "\\Fonts\\segoeui.ttf";
+    const char *const wtitle[] = {wf[0].c_str(), wf[1].c_str(), nullptr};
+    const char *const wbody[] = {wf[2].c_str(), nullptr};
+    title = wtitle;
+    label = wtitle;
+    body = wbody;
+#endif
     L.f_title = (p = find_font(title)) ? io.Fonts->AddFontFromFileTTF(p, 20.0f) : def;
     L.f_label = (p = find_font(label)) ? io.Fonts->AddFontFromFileTTF(p, 20.0f) : def;
     L.f_body = (p = find_font(body)) ? io.Fonts->AddFontFromFileTTF(p, 20.0f) : def;
@@ -1440,9 +1475,7 @@ extern "C" bool launcher_run(SDL_Window *win, Settings *cfg, Settings *saved, co
         L.page = PAGE_MAIN;
     L.menu_sel = 0;
 
-    L.dev = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL | SDL_GPU_SHADERFORMAT_METALLIB |
-                                    SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXIL,
-                                false, nullptr);
+    L.dev = render_create_device();
     if (!L.dev || !SDL_ClaimWindowForGPUDevice(L.dev, win)) {
         SDL_Log("launcher: GPU device unavailable: %s", SDL_GetError());
         if (L.dev)

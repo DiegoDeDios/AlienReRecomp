@@ -1,0 +1,29 @@
+// Windows resources: application manifest and version information.
+// Configured by CMake (version from PORT_VERSION in src/platform/launcher.h).
+#include <winver.h>
+
+1 24 "@CMAKE_SOURCE_DIR@/src/platform/win32/alien.manifest" // CREATEPROCESS_MANIFEST_RESOURCE_ID, RT_MANIFEST
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     @PORT_VERSION_MAJOR@,@PORT_VERSION_MINOR@,@PORT_VERSION_PATCH@,0
+PRODUCTVERSION  @PORT_VERSION_MAJOR@,@PORT_VERSION_MINOR@,@PORT_VERSION_PATCH@,0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "FileDescription", "Alien Resurrection native port"
+            VALUE "ProductName", "Alien Resurrection native port"
+            VALUE "FileVersion", "@PORT_VERSION@"
+            VALUE "ProductVersion", "@PORT_VERSION@"
+            VALUE "OriginalFilename", "AlienResurrection.exe"
+            VALUE "Comments", "Requires your own Alien Resurrection (USA) disc image."
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

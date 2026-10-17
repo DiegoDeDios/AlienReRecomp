@@ -4,7 +4,7 @@
  * blocks 1-15 hold save data (8 KiB each).
  */
 #include <stdlib.h>
-#include <sys/stat.h>
+#include <SDL3/SDL_filesystem.h>
 
 #include "memcard.h"
 #include "psx.h"
@@ -77,7 +77,7 @@ void memcard_flush(int port) {
         return;
     char path[1024];
     card_path(port, path, sizeof path);
-    mkdir(platform_data_dir(), 0755);
+    SDL_CreateDirectory(platform_data_dir());
     FILE *f = fopen(path, "wb");
     if (!f) {
         LOGE("card", "cannot write %s", path);

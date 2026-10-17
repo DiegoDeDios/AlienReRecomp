@@ -1,6 +1,6 @@
 # Alien Resurrection (PS1) — native port
 
-A native macOS port of *Alien Resurrection* (PlayStation, USA release
+A native macOS and Windows port of *Alien Resurrection* (PlayStation, USA release
 SLUS-00633), built by **statically recompiling** the original game code from
 MIPS to C. It is not an emulator: the game runs as a native program on a
 small runtime that stands in for the PlayStation's BIOS and hardware, drawn
@@ -180,7 +180,8 @@ applying on the next start. **Quit to desktop** is there too.
 | --- | --- |
 | Boot loader (`SLUS_006.33`): legal screen, FMV intro, LoadExec | working |
 | Main executable (`ALIEN.BIN`): menus, options, level 1 gameplay | working (playtesting) |
-| Hardware renderer (Metal, upscaled) | working |
+| Hardware renderer (Metal on macOS; Vulkan / Direct3D 12 on Windows), upscaled | working |
+| Windows build (cross-compiled with MinGW-w64) | working under Wine; real Windows testing pending |
 | Widescreen (16:9 / 16:10 / 21:9 / 32:9) | working (hardware renderer) |
 | Steady 60 fps (CPU headroom), vsync without tearing | working |
 | Precision geometry (no vertex wobble, perspective-correct textures) | working (hardware renderer) |
@@ -195,7 +196,9 @@ applying on the next start. **Quit to desktop** is there too.
 | Memory card saves (`bu00:`): save, load, overwrite | working |
 | DualShock analog + rumble protocol | implemented (no rumble output yet) |
 
-Known limitations: macOS only for now; levels after the first have not been
+Known limitations: the Windows build has been verified under Wine (identical
+results to macOS, Vulkan renderer) but not yet on real Windows hardware, and
+Direct3D 12 is untested; no Linux build yet; levels after the first have not been
 fully played through; no rumble output; the PlayStation Mouse is not
 emulated.
 
@@ -213,23 +216,16 @@ emulated.
      with the same names and draw them instead of the originals.
 
   Full-screen images (loading screens, title art) can be replaced whole.
-* **Windows and Linux support.** SDL3 already covers the window, input,
-  audio, GPU API (Vulkan, Direct3D 12) and the save folder; what is
-  macOS-specific today:
-  1. The hardware renderer's shaders exist only as Metal Shading Language
-     (`src/render/gpu_hw.c`), and the GPU device is created for MSL only.
-     Add SPIR-V (Vulkan) and DXIL (Direct3D 12) versions, e.g. written once
-     in HLSL and compiled with SDL_shadercross.
-  2. The launcher loads its fonts from `/System/Library/Fonts`
-     (`src/platform/launcher.cpp`); ship fonts or search per platform.
-  3. Directory handling uses POSIX calls (`mkdir`, `dirent.h` in
-     `main.c`, `discinfo.c`, `memcard.c`); SDL3's file system functions
-     work everywhere.
-  4. The code uses a few GNU C extensions (`typeof`, `__builtin_expect`),
-     so build with Clang or GCC (MinGW on Windows) rather than MSVC.
-  5. Build instructions and packaging for both systems.
+* **Linux support.** The renderer already has SPIR-V shaders (Vulkan) and
+  the platform code is portable; what is missing is a build and packaging
+  script, and launcher fonts (it looks in the macOS and Windows font
+  folders and otherwise falls back to ImGui's built-in font).
+* **Windows: testing on real hardware**, in particular the Direct3D 12
+  fallback, which cannot be exercised under Wine.
 
 ## Build
+
+### macOS
 
 Requirements: macOS, Xcode command line tools, CMake, Ninja, Python 3, SDL3
 (`brew install sdl3 cmake ninja`).
@@ -247,6 +243,40 @@ Sony PsyQ library functions, and regenerates the recompiled C code in
 `src/gen/`. It reads your disc image from `AlienResurrectionBinary/` and
 needs `reference/psx_psyq_signatures`
 (https://github.com/lab313ru/psx_psyq_signatures).
+
+### Windows
+
+The Windows release is cross-compiled from macOS (or Linux) with
+MinGW-w64, after `tools/regen.sh` has generated the code from your disc:
+
+```bash
+brew install mingw-w64
+```
+
+```bash
+tools/build_windows.sh
+```
+
+The script downloads SDL3's official MinGW development package (pinned
+version, checksum verified), builds into `build-win/`, and packages
+`build-win/release/AlienResurrection-<version>-windows-x64.zip`: the
+executable, `SDL3.dll`, a short README and the licenses. The executable
+needs no other DLLs (Windows 10/11 ship the C runtime). Building natively on
+Windows works the same way from an MSYS2 MinGW shell; MSVC is not supported
+(the generated code uses GNU C extensions).
+
+On Windows the renderer uses Vulkan and falls back to Direct3D 12 (Settings
+→ Graphics API, or `--gpu-driver`); saves and `config.ini` live in
+`%APPDATA%\AlienResurrectionPort\AlienResurrection\`, along with `alien.log`
+when the game is not started from a terminal.
+
+### Shaders
+
+The renderer's shaders are written once in GLSL (`src/render/shaders/`)
+and compiled for every backend into `src/render/shaders_gen.h` (SPIR-V for
+Vulkan, HLSL for Direct3D 12 compiled to DXBC at start-up, MSL for Metal).
+The generated header is committed; after editing a shader run
+`python3 tools/compile_shaders.py` (needs `glslang` and `spirv-cross`).
 
 ## Run
 
@@ -337,9 +367,10 @@ changeable in **Controls**):
 | ` (backtick) | | fast forward |
 
 Fixed keys: F2 opens the settings overlay, F11 or Cmd+Ctrl+F toggles
-fullscreen, F12 takes a screenshot (Shift+F12 dumps VRAM), F1 releases the
-mouse. These can't be bound to game actions. Quit with Cmd+Q, by closing the
-window, or with Quit to desktop in the overlay.
+fullscreen (F11 only on Windows), F12 takes a screenshot (Shift+F12 dumps
+VRAM), F1 releases the mouse. These can't be bound to game actions. Quit with
+Cmd+Q (Alt+F4 on Windows), by closing the window, or with Quit to desktop in
+the overlay.
 
 Controllers are detected automatically; their sticks always drive the
 analog sticks and the buttons follow the Controls page (default: the
@@ -349,7 +380,8 @@ Start together opens the overlay; neither button reaches the game then, so
 the game's own pause menu stays closed.
 
 Saves are stored as standard 128 KiB memory card images in
-`~/Library/Application Support/AlienResurrectionPort/AlienResurrection/`,
+`~/Library/Application Support/AlienResurrectionPort/AlienResurrection/`
+(Windows: `%APPDATA%\AlienResurrectionPort\AlienResurrection\`),
 together with `config.ini`.
 The game keeps its options (Invert Y, crosshair, vibration…) inside each save
 and restores them from the newest save at startup. Invert Y defaults to off
@@ -364,8 +396,9 @@ in this port (the original defaulted to on).
 * The runtime (`src/runtime`, `src/hw`) replaces the PlayStation BIOS and
   models the hardware the game and its libraries talk to: GPU, GTE, CD-ROM,
   SPU, MDEC, DMA, timers, controllers and memory cards.
-* The renderer (`src/render`) draws the game's GPU commands with Metal
-  through the SDL3 GPU API, at a multiple of the original resolution.
+* The renderer (`src/render`) draws the game's GPU commands through the
+  SDL3 GPU API (Metal on macOS, Vulkan or Direct3D 12 on Windows), at a
+  multiple of the original resolution.
 * The enhancements are small native replacements for individual game
   functions (`src/runtime/native.c`), found by reverse engineering the
   game.
@@ -383,10 +416,12 @@ src/runtime/      CPU glue, scheduler, interrupts, HLE BIOS, GTE, interpreter,
                   game enhancements (native.c)
 src/hw/           PS1 hardware: DMA, timers, GPU command processor + software
                   rasterizer, CD-ROM, SPU, MDEC, controller port
-src/render/       Metal/SDL_GPU hardware renderer and presentation
+src/render/       SDL GPU hardware renderer and presentation; shaders/ (GLSL)
+                  and shaders_gen.h (compiled for Vulkan, Direct3D 12, Metal)
 src/platform/     SDL3 frontend: launcher (Dear ImGui), settings/config.ini,
                   input bindings, window, audio, pacing, screenshots
 third_party/      Dear ImGui (MIT), vendored
+cmake/, packaging/  Windows cross-compilation toolchain and release files
 docs/             architecture and reverse-engineering notes
 docs/media/       README screenshots and animations
 ```

@@ -113,6 +113,7 @@ void settings_defaults(Settings *s) {
     s->internal_scale = 4;
     s->pgxp = true;
     s->vsync = true;
+    snprintf(s->gpu_driver, sizeof s->gpu_driver, "auto");
     s->smooth = true;
     s->sprint = true;
     s->sprint_pct = 190;
@@ -304,6 +305,9 @@ bool settings_load(Settings *s, const char *path) {
             else if (!strcmp(k, "smooth")) s->smooth = parse_bool(v);
             else if (!strcmp(k, "fullscreen")) s->fullscreen = parse_bool(v);
             else if (!strcmp(k, "show_fps")) s->show_fps = parse_bool(v);
+            else if (!strcmp(k, "gpu_driver") &&
+                     (!strcmp(v, "auto") || !strcmp(v, "vulkan") || !strcmp(v, "direct3d12")))
+                snprintf(s->gpu_driver, sizeof s->gpu_driver, "%s", v);
         } else if (!strcmp(sect, "gameplay")) {
             if (!strcmp(k, "sprint")) s->sprint = parse_bool(v);
             else if (!strcmp(k, "sprint_speed")) s->sprint_pct = clampi(atoi(v), 100, 300);
@@ -360,9 +364,11 @@ bool settings_save(const Settings *s, const char *path) {
     fprintf(f, "# Alien Resurrection native port settings (written by the launcher)\n\n");
     fprintf(f, "[game]\ndisc = %s\nskip_intro = %s\n\n", s->disc, tf[s->skip_intro]);
     fprintf(f, "[video]\nwidescreen = %s\naspect = %d:%d\ninternal_scale = %d\n"
-               "pgxp = %s\nvsync = %s\nsmooth = %s\nfullscreen = %s\nshow_fps = %s\n\n",
+               "pgxp = %s\nvsync = %s\nsmooth = %s\nfullscreen = %s\nshow_fps = %s\n"
+               "gpu_driver = %s\n\n",
             tf[s->widescreen], s->aspect_w, s->aspect_h, s->internal_scale,
-            tf[s->pgxp], tf[s->vsync], tf[s->smooth], tf[s->fullscreen], tf[s->show_fps]);
+            tf[s->pgxp], tf[s->vsync], tf[s->smooth], tf[s->fullscreen], tf[s->show_fps],
+            s->gpu_driver);
     fprintf(f, "[gameplay]\nsprint = %s\nsprint_speed = %d\ninfinite_flashlight = %s\n"
                "cpu_speed = %d\n\n",
             tf[s->sprint], s->sprint_pct, tf[s->infinite_flashlight], s->cpu_pct);

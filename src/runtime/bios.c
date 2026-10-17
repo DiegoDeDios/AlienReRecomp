@@ -4,7 +4,6 @@
  * on the memory card ("bu00:"), LoadExec and console output.
  */
 #include <ctype.h>
-#include <setjmp.h>
 #include <stdlib.h>
 
 #include "psx.h"
@@ -74,7 +73,7 @@ static uint32_t g_heap_start, g_heap_end;
 static uint32_t g_rand_seed = 0x24040001;
 bool g_bios_exit_requested;
 
-static jmp_buf g_boot_jmp;
+static host_jmp_buf g_boot_jmp;
 static char g_pending_exec[128];
 
 /* deferred event delivery (memory card completion etc.) */
@@ -373,7 +372,7 @@ void bios_boot(CPU *c, const char *exe) {
         char path[128];
         snprintf(path, sizeof path, "%s", g_pending_exec);
         g_pending_exec[0] = 0;
-        if (setjmp(g_boot_jmp) == 0) {
+        if (host_setjmp(g_boot_jmp) == 0) {
             c->r[SP] = 0x801FFF00u;
             c->r[30] = c->r[SP];
             bios_load_exe(c, path, true);
@@ -398,7 +397,7 @@ static void do_load_exec(CPU *c) {
     memset(g_ev, 0, sizeof g_ev);
     g_istat = 0;
     g_imask = 0;
-    longjmp(g_boot_jmp, 1);
+    host_longjmp(g_boot_jmp);
 }
 
 /* ------------------------------------------------------------------ */
@@ -907,7 +906,7 @@ void bios_call_B0(CPU *c) {
         LOGI("bios", "exit(%d)", (int)a0);
         g_bios_exit_requested = true;
         g_pending_exec[0] = 0;
-        longjmp(g_boot_jmp, 1);
+        host_longjmp(g_boot_jmp);
     case 0x3D: { /* putchar */
         char s[2] = {(char)a0, 0};
         guest_print(s);

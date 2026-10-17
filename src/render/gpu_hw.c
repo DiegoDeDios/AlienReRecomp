@@ -1,5 +1,6 @@
 /*
- * Hardware GPU backend on the SDL3 GPU API (Metal on macOS).
+ * Hardware GPU backend on the SDL3 GPU API (Metal on macOS, Vulkan or
+ * Direct3D 12 on Windows).
  *
  * VRAM lives in an upscaled RGBA8 render target (1024*S x 512*S). Every
  * texel encodes a 16-bit PS1 pixel (5-5-5 colour + mask bit in alpha), so
@@ -27,116 +28,9 @@
 #include "../runtime/widescreen.h"
 #include "render.h"
 
-/* ------------------------------------------------------------------ */
-/* shaders (MSL)                                                       */
-
-static const char k_msl[] =
-"#include <metal_stdlib>\n"
-"using namespace metal;\n"
-"struct VIn { float2 pos [[attribute(0)]]; float4 col [[attribute(1)]];\n"
-"             float2 uv [[attribute(2)]]; uint4 info [[attribute(3)]];\n"
-"             float w [[attribute(4)]]; };\n"
-"struct VOut { float4 pos [[position]]; float4 col; float2 uv;\n"
-"              uint4 info [[flat]]; };\n"
-"struct VUni { float2 vram_size; float2 pad; };\n"
-"vertex VOut draw_vs(VIn in [[stage_in]], constant VUni &u [[buffer(0)]]) {\n"
-"  VOut o;\n"
-"  float2 n = in.pos / u.vram_size * 2.0 - 1.0;\n"
-"  /* w > 1 encodes depth (PGXP): attributes are then interpolated with\n"
-"   * perspective correction; w = 1 reproduces the PS1's affine mapping */\n"
-"  o.pos = float4(n.x * in.w, -n.y * in.w, 0.0, in.w);\n"
-"  o.col = in.col; o.uv = in.uv; o.info = in.info;\n"
-"  return o;\n"
-"}\n"
-"struct FUni { float scale; uint pass; uint pad0; uint pad1; };\n"
-"static uint pack16(float4 v) {\n"
-"  uint r = uint(rint(v.r * 31.0)), g = uint(rint(v.g * 31.0)), b = uint(rint(v.b * 31.0));\n"
-"  return r | (g << 5) | (b << 10) | (v.a > 0.5 ? 0x8000u : 0u);\n"
-"}\n"
-"static uint vram16(texture2d<float> t, uint2 p, float s) {\n"
-"  p.x &= 1023u; p.y &= 511u;\n"
-"  return pack16(t.read(uint2(float2(p) * s)));\n"
-"}\n"
-"fragment float4 draw_fs(VOut in [[stage_in]], texture2d<float> vram [[texture(0)]],\n"
-"                        sampler smp [[sampler(0)]], constant FUni &u [[buffer(0)]]) {\n"
-"  uint flags = in.info.x >> 16;\n"
-"  bool textured = (flags & 1u) != 0, raw = (flags & 2u) != 0,\n"
-"       semi = (flags & 4u) != 0, setmask = (flags & 8u) != 0;\n"
-"  float3 rgb = in.col.rgb;\n"
-"  float mask = setmask ? 1.0 : 0.0;\n"
-"  if (textured) {\n"
-"    uint tpage = in.info.x & 0x1FFu;\n"
-"    uint2 uv = uint2(int2(floor(in.uv))) & 0xFFu;\n"
-"    uint tw = in.info.z;\n"
-"    uint mx = tw & 31u, my = (tw >> 5) & 31u, ox = (tw >> 10) & 31u, oy = (tw >> 15) & 31u;\n"
-"    uv.x = (uv.x & ~(mx * 8u)) | ((ox & mx) * 8u);\n"
-"    uv.y = (uv.y & ~(my * 8u)) | ((oy & my) * 8u);\n"
-"    uint tx = (tpage & 15u) * 64u, ty = ((tpage >> 4) & 1u) * 256u;\n"
-"    uint depth = (tpage >> 7) & 3u;\n"
-"    uint clut = in.info.y;\n"
-"    uint cx = (clut & 63u) * 16u, cy = (clut >> 6) & 511u;\n"
-"    uint texel;\n"
-"    if (depth == 0u) {\n"
-"      uint w = vram16(vram, uint2(tx + uv.x / 4u, ty + uv.y), u.scale);\n"
-"      texel = vram16(vram, uint2(cx + ((w >> ((uv.x & 3u) * 4u)) & 15u), cy), u.scale);\n"
-"    } else if (depth == 1u) {\n"
-"      uint w = vram16(vram, uint2(tx + uv.x / 2u, ty + uv.y), u.scale);\n"
-"      texel = vram16(vram, uint2(cx + ((w >> ((uv.x & 1u) * 8u)) & 255u), cy), u.scale);\n"
-"    } else {\n"
-"      texel = vram16(vram, uint2(tx + uv.x, ty + uv.y), u.scale);\n"
-"    }\n"
-"    if (texel == 0u) discard_fragment();\n"
-"    bool stp = (texel & 0x8000u) != 0u;\n"
-"    if (semi && u.pass == 1u && stp) discard_fragment();\n"
-"    if (semi && u.pass == 2u && !stp) discard_fragment();\n"
-"    float3 t = float3(float(texel & 31u), float((texel >> 5) & 31u), float((texel >> 10) & 31u)) / 31.0;\n"
-"    rgb = raw ? t : min(t * in.col.rgb * (255.0 / 128.0), float3(1.0));\n"
-"    mask = (stp || setmask) ? 1.0 : 0.0;\n"
-"  }\n"
-"  return float4(rgb, mask);\n"
-"}\n"
-/* blit: copy native-resolution upload texture into the scaled VRAM */
-"struct BIn { float2 pos [[attribute(0)]]; float2 uv [[attribute(1)]]; };\n"
-"struct BOut { float4 pos [[position]]; float2 uv; };\n"
-"vertex BOut blit_vs(BIn in [[stage_in]], constant VUni &u [[buffer(0)]]) {\n"
-"  BOut o;\n"
-"  float2 n = in.pos / u.vram_size * 2.0 - 1.0;\n"
-"  o.pos = float4(n.x, -n.y, 0.0, 1.0); o.uv = in.uv; return o;\n"
-"}\n"
-"struct BUni { float setmask; float pad0; float pad1; float pad2; };\n"
-"fragment float4 blit_fs(BOut in [[stage_in]], texture2d<float> src [[texture(0)]],\n"
-"                        sampler smp [[sampler(0)]], constant BUni &u [[buffer(0)]]) {\n"
-"  float4 c = src.read(uint2(floor(in.uv)));\n"
-"  if (u.setmask > 0.5) c.a = 1.0;\n"
-"  return c;\n"
-"}\n"
-/* display: fullscreen triangle sampling the display area */
-"struct DOut { float4 pos [[position]]; float2 uv; };\n"
-"vertex DOut disp_vs(uint vid [[vertex_id]]) {\n"
-"  DOut o;\n"
-"  float2 p = float2(float((vid << 1) & 2u), float(vid & 2u));\n"
-"  o.pos = float4(p * 2.0 - 1.0, 0.0, 1.0);\n"
-"  o.uv = float2(p.x, 1.0 - p.y);\n"
-"  return o;\n"
-"}\n"
-"struct DUni { float4 rect; float scale; uint rgb24; float pad0; float pad1; };\n"
-"fragment float4 disp_fs(DOut in [[stage_in]], texture2d<float> vram [[texture(0)]],\n"
-"                        sampler smp [[sampler(0)]], constant DUni &u [[buffer(0)]]) {\n"
-"  if (u.rgb24 != 0u) {\n"
-"    uint px = uint(in.uv.x * u.rect.z), py = uint(in.uv.y * u.rect.w);\n"
-"    uint bo = uint(u.rect.x) * 2u + px * 3u;\n"
-"    uint y = uint(u.rect.y) + py;\n"
-"    uint w0 = vram16(vram, uint2(bo / 2u, y), u.scale);\n"
-"    uint w1 = vram16(vram, uint2(bo / 2u + 1u, y), u.scale);\n"
-"    uint v = w0 | (w1 << 16);\n"
-"    uint sh = (bo & 1u) * 8u;\n"
-"    return float4(float((v >> sh) & 255u), float((v >> (sh + 8u)) & 255u),\n"
-"                  float((v >> (sh + 16u)) & 255u), 255.0) / 255.0;\n"
-"  }\n"
-"  float2 p = (u.rect.xy + in.uv * u.rect.zw) / float2(1024.0, 512.0);\n"
-"  float4 c = vram.sample(smp, p);\n"
-"  return float4(c.rgb, 1.0);\n"
-"}\n";
+/* shaders: GLSL sources in shaders/, compiled for every backend by
+ * tools/compile_shaders.py */
+#include "shaders_gen.h"
 
 /* ------------------------------------------------------------------ */
 
@@ -157,6 +51,9 @@ typedef struct {
 
 #define MAX_VERTS 65536
 #define MAX_DRAWS 8192
+/* upload staging: room for several flushes / uploads per frame */
+#define VTB_SIZE (4u * MAX_VERTS * (uint32_t)sizeof(HwVertex))
+#define TEX_TB_SIZE (8u * 1024u * 1024u)
 
 static struct {
     SDL_GPUDevice *dev;
@@ -183,24 +80,19 @@ static struct {
     int cap_w, cap_h;
     bool capture_wanted;
     RenderOverlayFn overlay;
+    uint32_t vtb_off, tex_off; /* staging offsets in this command buffer */
+    /* fences of the last frames submitted (see submit_frame) */
+    SDL_GPUFence *inflight[2];
+    int inflight_pos;
     bool hold_aspect;
     float held_aspect;
 } H;
 
-static SDL_GPUShader *make_shader(const char *entry, SDL_GPUShaderStage stage,
+static SDL_GPUShader *make_shader(const ShaderBlob *b, SDL_GPUShaderStage stage,
                                   int samplers, int uniforms) {
-    SDL_GPUShaderCreateInfo ci = {
-        .code_size = sizeof k_msl - 1,
-        .code = (const Uint8 *)k_msl,
-        .entrypoint = entry,
-        .format = SDL_GPU_SHADERFORMAT_MSL,
-        .stage = stage,
-        .num_samplers = (Uint32)samplers,
-        .num_uniform_buffers = (Uint32)uniforms,
-    };
-    SDL_GPUShader *s = SDL_CreateGPUShader(H.dev, &ci);
+    SDL_GPUShader *s = render_create_shader(H.dev, b, stage, samplers, uniforms);
     if (!s)
-        fatal("shader %s: %s", entry, SDL_GetError());
+        fatal("shader: %s", SDL_GetError());
     return s;
 }
 
@@ -271,8 +163,8 @@ static SDL_GPUGraphicsPipeline *make_draw_pipeline(SDL_GPUShader *vs,
 typedef struct { float x, y, u, v; } BlitVertex;
 
 static SDL_GPUGraphicsPipeline *make_blit_pipeline(void) {
-    SDL_GPUShader *vs = make_shader("blit_vs", SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
-    SDL_GPUShader *fs = make_shader("blit_fs", SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+    SDL_GPUShader *vs = make_shader(&k_blit_vert, SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
+    SDL_GPUShader *fs = make_shader(&k_blit_frag, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
     SDL_GPUVertexBufferDescription vbd = {
         .slot = 0, .pitch = sizeof(BlitVertex),
         .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX};
@@ -300,8 +192,8 @@ static SDL_GPUGraphicsPipeline *make_blit_pipeline(void) {
 }
 
 static SDL_GPUGraphicsPipeline *make_display_pipeline(SDL_GPUTextureFormat fmt) {
-    SDL_GPUShader *vs = make_shader("disp_vs", SDL_GPU_SHADERSTAGE_VERTEX, 0, 0);
-    SDL_GPUShader *fs = make_shader("disp_fs", SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+    SDL_GPUShader *vs = make_shader(&k_disp_vert, SDL_GPU_SHADERSTAGE_VERTEX, 0, 0);
+    SDL_GPUShader *fs = make_shader(&k_disp_frag, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
     SDL_GPUColorTargetDescription ctd = {.format = fmt};
     SDL_GPUGraphicsPipelineCreateInfo ci = {
         .vertex_shader = vs,
@@ -340,7 +232,32 @@ static void ensure_cmd(void) {
         H.cmd = SDL_AcquireGPUCommandBuffer(H.dev);
         if (!H.cmd)
             fatal("acquire command buffer: %s", SDL_GetError());
+        H.vtb_off = H.tex_off = 0;
     }
+}
+
+/* Staging for uploads: within one command buffer, successive uploads go to
+ * disjoint ranges of the same transfer buffer, and the buffer is cycled
+ * (SDL hands out an instance no pending command buffer uses) only for the
+ * first upload of a command buffer or when it is full. Cycling on every
+ * upload made SDL allocate a new instance per flush while the earlier ones
+ * were still referenced by the same command buffer: hundreds of megabytes
+ * per frame in flight. Returns the mapped range; *at is its offset and
+ * *cycled says whether a destination buffer written from it must be cycled
+ * too (its earlier contents may still be in use). */
+static uint8_t *stage_map(SDL_GPUTransferBuffer *tb, uint32_t *off, uint32_t size,
+                          uint32_t bytes, uint32_t align, uint32_t *at, bool *cycled) {
+    bool cycle = *off == 0 || *off + bytes > size;
+    if (cycle)
+        *off = 0;
+    uint8_t *p = SDL_MapGPUTransferBuffer(H.dev, tb, cycle);
+    if (!p)
+        fatal("map transfer buffer: %s", SDL_GetError());
+    *at = *off;
+    *off = (*off + bytes + align - 1) & ~(align - 1);
+    if (cycled)
+        *cycled = cycle;
+    return p + *at;
 }
 
 static inline void rgba_from16(uint16_t p, uint8_t *o) {
@@ -395,21 +312,22 @@ static void flush_draws(void) {
     }
     ensure_cmd();
     /* upload vertices */
-    uint32_t bytes = H.nverts * (uint32_t)sizeof(HwVertex);
-    void *p = SDL_MapGPUTransferBuffer(H.dev, H.vtb, true);
+    uint32_t bytes = H.nverts * (uint32_t)sizeof(HwVertex), at;
+    bool cycle;
+    uint8_t *p = stage_map(H.vtb, &H.vtb_off, VTB_SIZE, bytes, 256, &at, &cycle);
     memcpy(p, H.verts, bytes);
     SDL_UnmapGPUTransferBuffer(H.dev, H.vtb);
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(H.cmd);
-    SDL_GPUTransferBufferLocation src = {H.vtb, 0};
-    SDL_GPUBufferRegion dst = {H.vbuf, 0, bytes};
-    SDL_UploadToGPUBuffer(cp, &src, &dst, true);
+    SDL_GPUTransferBufferLocation src = {H.vtb, at};
+    SDL_GPUBufferRegion dst = {H.vbuf, at, bytes};
+    SDL_UploadToGPUBuffer(cp, &src, &dst, cycle);
     SDL_EndGPUCopyPass(cp);
 
     SDL_GPUColorTargetInfo ct = {.texture = H.vram,
                                  .load_op = SDL_GPU_LOADOP_LOAD,
                                  .store_op = SDL_GPU_STOREOP_STORE};
     SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(H.cmd, &ct, 1, NULL);
-    SDL_GPUBufferBinding vb = {H.vbuf, 0};
+    SDL_GPUBufferBinding vb = {H.vbuf, at};
     SDL_BindGPUVertexBuffers(rp, 0, &vb, 1);
     SDL_GPUTextureSamplerBinding ts = {H.vram_read, H.nearest};
     SDL_BindGPUFragmentSamplers(rp, 0, &ts, 1);
@@ -744,13 +662,15 @@ static void blit_upload(int x, int y, int w, int h, bool setmask) {
         q[i].u = px[i];
         q[i].v = py[i];
     }
-    void *p = SDL_MapGPUTransferBuffer(H.dev, H.vtb, true);
+    uint32_t at;
+    bool cycle;
+    uint8_t *p = stage_map(H.vtb, &H.vtb_off, VTB_SIZE, sizeof q, 256, &at, &cycle);
     memcpy(p, q, sizeof q);
     SDL_UnmapGPUTransferBuffer(H.dev, H.vtb);
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(H.cmd);
-    SDL_GPUTransferBufferLocation src = {H.vtb, 0};
-    SDL_GPUBufferRegion dst = {H.vbuf, 0, sizeof q};
-    SDL_UploadToGPUBuffer(cp, &src, &dst, true);
+    SDL_GPUTransferBufferLocation src = {H.vtb, at};
+    SDL_GPUBufferRegion dst = {H.vbuf, at, sizeof q};
+    SDL_UploadToGPUBuffer(cp, &src, &dst, cycle);
     SDL_EndGPUCopyPass(cp);
 
     SDL_GPUColorTargetInfo ct = {.texture = H.vram,
@@ -758,7 +678,7 @@ static void blit_upload(int x, int y, int w, int h, bool setmask) {
                                  .store_op = SDL_GPU_STOREOP_STORE};
     SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(H.cmd, &ct, 1, NULL);
     SDL_BindGPUGraphicsPipeline(rp, H.blit_pipe);
-    SDL_GPUBufferBinding vb = {H.vbuf, 0};
+    SDL_GPUBufferBinding vb = {H.vbuf, at};
     SDL_BindGPUVertexBuffers(rp, 0, &vb, 1);
     SDL_GPUTextureSamplerBinding ts = {H.upload, H.nearest};
     SDL_BindGPUFragmentSamplers(rp, 0, &ts, 1);
@@ -783,7 +703,9 @@ static void upload_rect(int x, int y, int w, int h, bool setmask) {
     if (w <= 0 || h <= 0)
         return;
     ensure_cmd();
-    uint8_t *p = SDL_MapGPUTransferBuffer(H.dev, H.tex_tb, true);
+    uint32_t at;
+    /* 512: D3D12's texture upload offset alignment */
+    uint8_t *p = stage_map(H.tex_tb, &H.tex_off, TEX_TB_SIZE, (uint32_t)(w * h * 4), 512, &at, NULL);
     for (int j = 0; j < h; j++) {
         const uint16_t *row = &g_vram[(y + j) * VRAM_W + x];
         uint8_t *o = p + (size_t)j * (size_t)w * 4;
@@ -792,7 +714,7 @@ static void upload_rect(int x, int y, int w, int h, bool setmask) {
     }
     SDL_UnmapGPUTransferBuffer(H.dev, H.tex_tb);
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(H.cmd);
-    SDL_GPUTextureTransferInfo ti = {H.tex_tb, 0, (Uint32)w, (Uint32)h};
+    SDL_GPUTextureTransferInfo ti = {H.tex_tb, at, (Uint32)w, (Uint32)h};
     SDL_GPUTextureRegion r = {.texture = H.upload, .x = (Uint32)x, .y = (Uint32)y,
                               .w = (Uint32)w, .h = (Uint32)h, .d = 1};
     SDL_UploadToGPUTexture(cp, &ti, &r, false);
@@ -971,6 +893,24 @@ static void present_prepare(void) {
     ensure_cmd();
 }
 
+/* Submit the frame's command buffer, then wait until the frame submitted
+ * two frames ago has finished on the GPU. Presenting to a window already
+ * blocks on the swapchain, but without one (headless runs, minimised
+ * window, fast forward) nothing else stops the emulator from queueing
+ * frames faster than the GPU draws them; each queued frame keeps its
+ * cycled transfer buffers alive, and memory use grows without bound. */
+static void submit_frame(void) {
+    SDL_GPUFence *f = SDL_SubmitGPUCommandBufferAndAcquireFence(H.cmd);
+    H.cmd = NULL;
+    SDL_GPUFence **slot = &H.inflight[H.inflight_pos];
+    if (*slot) {
+        SDL_WaitForGPUFences(H.dev, true, slot, 1);
+        SDL_ReleaseGPUFence(H.dev, *slot);
+    }
+    *slot = f;
+    H.inflight_pos = (H.inflight_pos + 1) % 2;
+}
+
 void render_present(void) {
     if (!H.dev)
         return;
@@ -1021,8 +961,7 @@ void render_present(void) {
         H.capture_wanted = false;
         return;
     }
-    SDL_SubmitGPUCommandBuffer(H.cmd);
-    H.cmd = NULL;
+    submit_frame();
 }
 
 bool render_capture(uint8_t **rgb, int *w, int *h) {
@@ -1130,9 +1069,16 @@ bool render_init(SDL_Window *win, const RenderConfig *cfg) {
     H.cfg = *cfg;
     H.S = cfg->software ? 1 : (cfg->scale < 1 ? 1 : cfg->scale);
     H.win = win;
-    H.dev = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, false, NULL);
+    static const ShaderBlob *const shaders[] = {&k_draw_vert, &k_draw_frag, &k_blit_vert,
+                                                &k_blit_frag, &k_disp_vert, &k_disp_frag};
+    static const SDL_GPUShaderStage stages[] = {
+        SDL_GPU_SHADERSTAGE_VERTEX, SDL_GPU_SHADERSTAGE_FRAGMENT, SDL_GPU_SHADERSTAGE_VERTEX,
+        SDL_GPU_SHADERSTAGE_FRAGMENT, SDL_GPU_SHADERSTAGE_VERTEX, SDL_GPU_SHADERSTAGE_FRAGMENT};
+    render_require_shaders(shaders, stages, 6);
+    H.dev = render_create_device();
+    render_require_shaders(NULL, NULL, 0);
     if (!H.dev) {
-        LOGE("render", "SDL_CreateGPUDevice: %s", SDL_GetError());
+        LOGE("render", "no usable GPU device: %s", SDL_GetError());
         return false;
     }
     if (win && !cfg->headless) {
@@ -1166,13 +1112,12 @@ bool render_init(SDL_Window *win, const RenderConfig *cfg) {
     H.tmp = make_texture(W, Ht, SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET);
     H.upload = make_texture(1024, 512, SDL_GPU_TEXTUREUSAGE_SAMPLER);
 
-    SDL_GPUBufferCreateInfo bci = {.usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-                                   .size = MAX_VERTS * sizeof(HwVertex)};
+    SDL_GPUBufferCreateInfo bci = {.usage = SDL_GPU_BUFFERUSAGE_VERTEX, .size = VTB_SIZE};
     H.vbuf = SDL_CreateGPUBuffer(H.dev, &bci);
     SDL_GPUTransferBufferCreateInfo tci = {.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-                                           .size = MAX_VERTS * sizeof(HwVertex)};
+                                           .size = VTB_SIZE};
     H.vtb = SDL_CreateGPUTransferBuffer(H.dev, &tci);
-    tci.size = 1024 * 512 * 4;
+    tci.size = TEX_TB_SIZE;
     H.tex_tb = SDL_CreateGPUTransferBuffer(H.dev, &tci);
     SDL_GPUTransferBufferCreateInfo dci = {.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
                                            .size = (Uint32)(W * Ht * 4)};
@@ -1190,8 +1135,8 @@ bool render_init(SDL_Window *win, const RenderConfig *cfg) {
     sn.min_filter = sn.mag_filter = SDL_GPU_FILTER_LINEAR;
     H.linear = SDL_CreateGPUSampler(H.dev, &sn);
 
-    SDL_GPUShader *vs = make_shader("draw_vs", SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
-    SDL_GPUShader *fs = make_shader("draw_fs", SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+    SDL_GPUShader *vs = make_shader(&k_draw_vert, SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
+    SDL_GPUShader *fs = make_shader(&k_draw_frag, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
     for (int m = -1; m < 4; m++)
         H.draw_pipe[m + 1] = make_draw_pipeline(vs, fs, m);
     SDL_ReleaseGPUShader(H.dev, vs);
@@ -1225,6 +1170,11 @@ void render_shutdown(void) {
     if (!H.dev)
         return;
     SDL_WaitForGPUIdle(H.dev);
+    for (int i = 0; i < 2; i++)
+        if (H.inflight[i]) {
+            SDL_ReleaseGPUFence(H.dev, H.inflight[i]);
+            H.inflight[i] = NULL;
+        }
     SDL_DestroyGPUDevice(H.dev);
     H.dev = NULL;
 }
