@@ -2,7 +2,7 @@
 // Configured by CMake (version from PORT_VERSION in src/platform/launcher.h).
 #include <winver.h>
 
-1 24 "@CMAKE_SOURCE_DIR@/src/platform/win32/alien.manifest" // CREATEPROCESS_MANIFEST_RESOURCE_ID, RT_MANIFEST
+1 24 "@CMAKE_BINARY_DIR@/alien.manifest" // CREATEPROCESS_MANIFEST_RESOURCE_ID, RT_MANIFEST
 1 ICON "@CMAKE_SOURCE_DIR@/packaging/icon/AppIcon.ico" // also the window icon (SDL hint)
 
 VS_VERSION_INFO VERSIONINFO

@@ -25,3 +25,7 @@ saves/
 .DS_Store
 .cache/
 __pycache__/
+
+# Crash dumps (e.g. from container test runs in the repo folder)
+/core
+/core.[0-9]*

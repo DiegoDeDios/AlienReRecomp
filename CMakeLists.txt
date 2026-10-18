@@ -163,6 +163,7 @@ if(WIN32)
   # MinGW runtime linked statically so only SDL3.dll ships next to the exe,
   # and a 16 MB stack for deep guest call chains (the default is 1 MB).
   enable_language(RC)
+  configure_file(src/platform/win32/alien.manifest.in ${CMAKE_BINARY_DIR}/alien.manifest @ONLY)
   configure_file(src/platform/win32/alien.rc.in ${CMAKE_BINARY_DIR}/alien.rc @ONLY)
   target_sources(alien PRIVATE src/platform/win32.c ${CMAKE_BINARY_DIR}/alien.rc)
   set_target_properties(alien PROPERTIES OUTPUT_NAME AlienResurrection WIN32_EXECUTABLE TRUE)
