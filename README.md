@@ -1,6 +1,6 @@
 # Alien Resurrection (PS1) — native port
 
-A native macOS and Windows port of *Alien Resurrection* (PlayStation, USA release
+A native macOS, Windows and Linux port of *Alien Resurrection* (PlayStation, USA release
 SLUS-00633), built by **statically recompiling** the original game code from
 MIPS to C. It is not an emulator: the game runs as a native program on a
 small runtime that stands in for the PlayStation's BIOS and hardware, drawn
@@ -183,9 +183,10 @@ applying on the next start. **Quit to desktop** is there too.
 | --- | --- |
 | Boot loader (`SLUS_006.33`): legal screen, FMV intro, LoadExec | working |
 | Main executable (`ALIEN.BIN`): menus, options, level 1 gameplay | working (playtesting) |
-| Hardware renderer (Metal on macOS; Vulkan / Direct3D 12 on Windows), upscaled | working |
-| Windows build (cross-compiled with MinGW-w64) | working under Wine; real Windows testing pending |
-| Release packages without game code (interpreter): macOS .app (universal), Windows .exe | working |
+| Hardware renderer (Metal on macOS; Vulkan / Direct3D 12 on Windows; Vulkan on Linux), upscaled | working |
+| Windows build (cross-compiled with MinGW-w64) | working (Wine; Parallels VM via Direct3D 12) |
+| Linux build (x86_64, glibc 2.35+) | working (Ubuntu 22.04 container, Vulkan via Mesa) |
+| Release packages without game code (interpreter): macOS .app (universal), Windows .exe, Linux .tar.gz | working |
 | Widescreen (16:9 / 16:10 / 21:9 / 32:9) | working (hardware renderer) |
 | Steady 60 fps (CPU headroom), vsync without tearing | working |
 | Precision geometry (no vertex wobble, perspective-correct textures) | working (hardware renderer) |
@@ -200,9 +201,9 @@ applying on the next start. **Quit to desktop** is there too.
 | Memory card saves (`bu00:`): save, load, overwrite | working |
 | DualShock analog + rumble protocol | implemented (no rumble output yet) |
 
-Known limitations: the Windows build has been verified under Wine (identical
-results to macOS, Vulkan renderer) but not yet on real Windows hardware, and
-Direct3D 12 is untested; no Linux build yet; levels after the first have not been
+Known limitations: the Windows build has been verified under Wine and in a
+Parallels VM, but not yet on a native Windows PC; the Linux build has been
+verified in containers, not yet on a Linux desktop; levels after the first have not been
 fully played through; no rumble output; the PlayStation Mouse is not
 emulated.
 
@@ -220,12 +221,11 @@ emulated.
      with the same names and draw them instead of the originals.
 
   Full-screen images (loading screens, title art) can be replaced whole.
-* **Linux support.** The renderer already has SPIR-V shaders (Vulkan) and
-  the platform code is portable; what is missing is a build and packaging
-  script, and launcher fonts (it looks in the macOS and Windows font
-  folders and otherwise falls back to ImGui's built-in font).
-* **Windows: testing on real hardware**, in particular the Direct3D 12
-  fallback, which cannot be exercised under Wine.
+* **Testing on native Windows and Linux machines** (so far: Wine, a
+  Parallels VM and containers).
+* **Linux: an AppImage or Flatpak** for desktop integration; the release is
+  a plain archive for now. arm64 Linux builds work with `ARCH=arm64
+  tools/build_linux_docker.sh` but are not part of the release yet.
 
 ## Build
 
@@ -310,6 +310,27 @@ On Windows the renderer uses Vulkan and falls back to Direct3D 12 (Settings
 → Graphics API, or `--gpu-driver`); saves and `config.ini` live in
 `%APPDATA%\AlienResurrectionPort\AlienResurrection\`, along with `alien.log`
 when the game is not started from a terminal.
+
+### Linux
+
+```bash
+tools/build_linux.sh
+```
+
+builds `build-linux-x86_64/release/AlienResurrection-<version>-linux-x86_64.tar.gz`
+on a Linux machine (Ubuntu/Debian build dependencies:
+`sudo tools/linux/install_deps_ubuntu.sh`). It compiles SDL3 from the
+official source release (pinned, checksum verified) and ships it in `lib/`
+next to the program, which finds it through its `$ORIGIN` run path; the C++
+runtime is linked statically. Build on an old distribution so the result
+runs on newer ones: the release is built on Ubuntu 22.04 (glibc 2.35).
+
+On macOS (or anywhere with Docker, e.g. `brew install colima docker`),
+`tools/build_linux_docker.sh` runs the same build in an Ubuntu 22.04
+container (`ARCH=arm64` for arm64).
+
+The renderer uses Vulkan; settings and saves live in
+`~/.local/share/AlienResurrectionPort/AlienResurrection/`.
 
 ### Shaders
 
@@ -422,7 +443,8 @@ the game's own pause menu stays closed.
 
 Saves are stored as standard 128 KiB memory card images in
 `~/Library/Application Support/AlienResurrectionPort/AlienResurrection/`
-(Windows: `%APPDATA%\AlienResurrectionPort\AlienResurrection\`),
+(Windows: `%APPDATA%\AlienResurrectionPort\AlienResurrection\`; Linux:
+`~/.local/share/AlienResurrectionPort/AlienResurrection/`),
 together with `config.ini`.
 The game keeps its options (Invert Y, crosshair, vibration…) inside each save
 and restores them from the newest save at startup. Invert Y defaults to off

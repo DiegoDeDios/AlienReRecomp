@@ -87,7 +87,11 @@ SDL_GPUDevice *render_create_device(void) {
     if (!d && d3d_ok)
         d = try_device(SDL_GPU_SHADERFORMAT_DXBC, "direct3d12");
     if (!d)
+#ifdef _WIN32
         SDL_SetError("no Vulkan or Direct3D 12 device (update the graphics driver?)");
+#else
+        SDL_SetError("no Vulkan device (install or update the Vulkan driver?)");
+#endif
     return d;
 #endif
 }

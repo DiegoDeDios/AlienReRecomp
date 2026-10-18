@@ -858,9 +858,11 @@ void draw_settings(ImDrawList *dl) {
             mark(&c->gpu_driver);
         }
     }
-    if (toggle("Fullscreen", &c->fullscreen, "Also toggled in game with F11.")) {
-#else
+#endif
+#ifdef __APPLE__
     if (toggle("Fullscreen", &c->fullscreen, "Also toggled in game with F11 or Cmd+Ctrl+F.")) {
+#else
+    if (toggle("Fullscreen", &c->fullscreen, "Also toggled in game with F11.")) {
 #endif
         mark(&c->fullscreen);
         SDL_SetWindowFullscreen(L.win, c->fullscreen);
@@ -1255,6 +1257,23 @@ const char *find_font(const char *const *paths) {
     return nullptr;
 }
 
+#if defined(__linux__)
+/* font file fontconfig picks for a pattern ("" if fc-match is missing) */
+std::string fc_match(const char *pattern) {
+    std::string cmd = std::string("fc-match -f '%{file}' '") + pattern + "' 2>/dev/null";
+    std::string out;
+    if (FILE *f = popen(cmd.c_str(), "r")) {
+        char buf[512];
+        while (fgets(buf, sizeof buf, f))
+            out += buf;
+        pclose(f);
+    }
+    bool ttf = out.size() > 4 && (out.compare(out.size() - 4, 4, ".ttf") == 0 ||
+                                  out.compare(out.size() - 4, 4, ".otf") == 0);
+    return ttf ? out : std::string();
+}
+#endif
+
 void load_fonts() {
     ImGuiIO &io = ImGui::GetIO();
     static const char *const mac_title[] = {"/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf",
@@ -1278,6 +1297,36 @@ void load_fonts() {
     title = wtitle;
     label = wtitle;
     body = wbody;
+#elif defined(__linux__)
+    /* common font packages (Debian/Ubuntu, Fedora, Arch layouts), then
+     * whatever fontconfig picks */
+    static const char *lx_title[] = {
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf",
+        "/usr/share/fonts/dejavu-sans-fonts/DejaVuSansCondensed-Bold.ttf",
+        "/usr/share/fonts/TTF/DejaVuSansCondensed-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+        "/usr/share/fonts/google-noto/NotoSans-Bold.ttf",
+        "/usr/share/fonts/noto/NotoSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        nullptr, nullptr};
+    static const char *lx_body[] = {
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        nullptr, nullptr};
+    static std::string fc_bold = fc_match("sans:bold"), fc_regular = fc_match("sans");
+    lx_title[sizeof lx_title / sizeof lx_title[0] - 2] = fc_bold.empty() ? nullptr : fc_bold.c_str();
+    lx_body[sizeof lx_body / sizeof lx_body[0] - 2] = fc_regular.empty() ? nullptr : fc_regular.c_str();
+    title = lx_title;
+    label = lx_title;
+    body = lx_body;
 #endif
     L.f_title = (p = find_font(title)) ? io.Fonts->AddFontFromFileTTF(p, 20.0f) : def;
     L.f_label = (p = find_font(label)) ? io.Fonts->AddFontFromFileTTF(p, 20.0f) : def;
