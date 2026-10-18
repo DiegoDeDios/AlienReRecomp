@@ -371,14 +371,22 @@ void platform_show_gpu_error(SDL_Window *win) {
 #ifdef __APPLE__
              "Alien Resurrection needs a Mac with Metal graphics, and no Metal device "
              "could be opened.\n\n"
-#else
+             "Start it from Terminal to see the details."
+#elif defined(_WIN32)
              "Alien Resurrection needs a graphics card with Vulkan or Direct3D 12 "
              "support, and neither could be used.\n\n"
              "Update the graphics driver. In a virtual machine, make sure 3D "
              "acceleration is enabled.\n\n"
+             "Details are in alien.log in:\n%s", platform_data_dir()
+#else
+             "Alien Resurrection needs a Vulkan graphics driver, and none could be "
+             "used.\n\n"
+             "Install your distribution's Vulkan driver (Mesa: mesa-vulkan-drivers or "
+             "vulkan-radeon / vulkan-intel; NVIDIA: the proprietary driver). In a "
+             "virtual machine, make sure 3D acceleration is enabled.\n\n"
+             "Start it from a terminal to see the details."
 #endif
-             "Details are in alien.log in:\n%s",
-             platform_data_dir());
+    );
     LOGE("main", "no usable GPU device");
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Alien Resurrection", text, win);
 }

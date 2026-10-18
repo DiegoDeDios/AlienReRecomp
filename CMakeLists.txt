@@ -144,6 +144,20 @@ if(APPLE)
   endif()
 endif()
 
+if(UNIX AND NOT APPLE)
+  # Linux release (tools/build_linux.sh): the program finds the bundled
+  # libSDL3.so.0 in lib/ next to it; the C++ runtime is linked statically so
+  # the package does not depend on the system's libstdc++ version.
+  option(PORT_LINUX_PACKAGE "Build the relocatable Linux release program" OFF)
+  if(PORT_LINUX_PACKAGE)
+    set_target_properties(alien PROPERTIES
+      OUTPUT_NAME AlienResurrection
+      BUILD_WITH_INSTALL_RPATH TRUE
+      INSTALL_RPATH "$ORIGIN/lib")
+    target_link_options(alien PRIVATE -static-libstdc++ -static-libgcc)
+  endif()
+endif()
+
 if(WIN32)
   # Windows: GUI program (SDL provides WinMain), manifest and version info,
   # MinGW runtime linked statically so only SDL3.dll ships next to the exe,

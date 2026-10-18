@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Alien Resurrection
+Comment=Native port of the PlayStation game (needs your own disc image)
+# Replace /path/to with the folder you extracted the game to
+Exec=/path/to/AlienResurrection
+Icon=/path/to/AlienResurrection.png
+Terminal=false
+Categories=Game;ActionGame;

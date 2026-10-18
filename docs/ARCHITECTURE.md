@@ -398,3 +398,16 @@ player's save game still take precedence (the game restores them at boot).
 * **Speed** on an Apple M1: about 3× real time in gameplay, 2.5× in the
   heaviest stretch (4× internal resolution, hardware renderer); the Intel
   slice under Rosetta about 1.9×.
+
+## Linux
+
+* Built natively (GCC/Clang) by `tools/build_linux.sh`, or in an Ubuntu 22.04
+  container by `tools/build_linux_docker.sh`; the release is built on Ubuntu
+  22.04 so it needs glibc 2.35 or newer.
+* SDL3 is compiled from the official source release and shipped as
+  `lib/libSDL3.so.0`; the program's run path is `$ORIGIN/lib`, and the C++
+  runtime is linked statically. SDL loads X11/Wayland, audio and input
+  libraries at run time, so they are not dependencies of the package.
+* Graphics: Vulkan (SPIR-V shaders).
+* Launcher fonts: DejaVu, Noto or Liberation from the usual distribution
+  paths, else whatever `fc-match` returns, else ImGui's built-in font.

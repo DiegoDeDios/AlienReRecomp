@@ -1,4 +1,4 @@
-Native macOS and Windows versions of the PlayStation game *Alien Resurrection*
+Native macOS, Windows and Linux versions of the PlayStation game *Alien Resurrection*
 (USA), with widescreen, high resolution, precision geometry, a steady 60 fps,
 mouse and keyboard controls and optional gameplay tweaks.
 
@@ -13,10 +13,12 @@ from your disc image and run by the port's interpreter when you play.
 | --- | --- |
 | macOS 11 or later (Apple Silicon and Intel) | `AlienResurrection-<version>-macos.zip` |
 | Windows 10/11, 64-bit (Vulkan or Direct3D 12 GPU) | `AlienResurrection-<version>-windows-x64.zip` |
+| Linux x86_64, glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36, SteamOS 3 or newer), Vulkan driver | `AlienResurrection-<version>-linux-x86_64.tar.gz` |
 
 ## Getting started
 
-1. Unzip and run **AlienResurrection** (`.app` on macOS, `.exe` on Windows).
+1. Unpack and run **AlienResurrection** (`.app` on macOS, `.exe` on Windows,
+   `./AlienResurrection` on Linux).
    - macOS: the app is not notarized. On first launch macOS blocks it; open
      *System Settings > Privacy & Security* and choose *Open Anyway*.
    - Windows: SmartScreen may warn about an unrecognized app; choose
