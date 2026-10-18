@@ -132,6 +132,39 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   frame's output has been read; the MDEC must behave like a FIFO.
 * The CD controller is expected to come up with all interrupt sources enabled
   (the real BIOS leaves it that way), libcd never writes the enable register.
+* **SPU IRQ from the transfer address**: the speech streamer (below) needs
+  the SPU IRQ to fire when the IRQ address equals the RAM transfer address
+  while no transfer runs, as the hardware compares them continuously.
+
+## Speech streaming (`*.CVS`, `*.CVD`)
+
+* Voice banks in `PACK.BIN`: `UFATHER.CVS` (Father, 638 lines), `ALIEN1`,
+  `MARINES`, `RIPLEY`, `CALL`, `CHRISTIE`, `DISTEPHA`, `NEWBORN`, `SQUEEN`.
+  Raw SPU ADPCM; every line is a whole number of 2 KiB sectors and ends with
+  an end+mute block (flags 1) 32 bytes before its end, then one padding
+  block.
+* `*.CVD` line tables (also chunks of the level `WAD`s): `"CVD "`, `u32
+  count`, 8-byte name, then from `+0x10` one `{u32 size; u32 offset}` per
+  line (bytes into the `CVS`). In level 1 Father's table is at
+  `0x80140C14`; line 212 (`0x22000` bytes) is the announcement at the start
+  of the level.
+* Lines play on SPU voice 23 through an 8 KiB ring at SPU `0x1010–0x300F`
+  (`0x1000` holds a silent looping block, flags 7, where idle voices are
+  parked). Sectors are read from the CD into a 16 KiB RAM ring and uploaded
+  2 KiB at a time (`0x8002979C`, per-stream update `0x80029BEC`); the SPU IRQ
+  fires every 512 bytes and its callback (`0x80029B14`) moves the IRQ
+  address on. Once the whole line is uploaded the stream's `+0x44` holds the
+  bytes left to play; each IRQ subtracts 512 and at ≤ 0 sets flag `0x10`,
+  which ends the stream and frees the speech channel.
+* The last IRQ therefore sits at the end of the line, past its end+mute
+  block: the voice jumps back to the ring start and never reads it. When the
+  line ends at the ring wrap (length a multiple of 8 KiB) the jump itself
+  reads the IRQ address; otherwise (three lines in four) only the transfer
+  address, left on that boundary by the last upload, raises it. An SPU that
+  checks the IRQ only on accesses leaves the line unfinished, the channel
+  busy and later lines silent, and keycard and security-seal doors that wait
+  for their line never open — the "door bug" of many emulators (see the
+  MiSTer PSX core's [issue 182](https://github.com/MiSTer-devel/PSX_MiSTer/issues/182)).
 
 ## Rendering and timing (gameplay)
 

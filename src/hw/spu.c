@@ -93,6 +93,36 @@ static void spu_irq_check(uint32_t addr, uint32_t len) {
     }
 }
 
+/* The hardware compares the IRQ address with the RAM transfer address all
+ * the time, not only while data moves, and voices read their current block
+ * sample by sample. So the IRQ also fires when it is enabled or pointed at
+ * the transfer address or at a block being played: checked whenever the IRQ
+ * address, SPUCNT or the transfer address changes.
+ *
+ * Alien Resurrection depends on it. Speech is streamed through an 8 KiB
+ * ring in 2 KiB uploads, with an IRQ every 512 bytes counting down the
+ * line. Each line ends with an end+mute block 32 bytes before a 2 KiB
+ * boundary, where its last IRQ sits, so the voice jumps back and never
+ * reads it; the transfer address, left on that boundary by the last upload,
+ * raises it. Without this the line never finishes: the speech channel
+ * stays busy and doors that wait for a line never open. */
+static void spu_irq_check_idle(bool voices) {
+    if (!(S.ctrl & 0x40) || (S.stat & 0x40))
+        return;
+    uint32_t unit = S.irq_addr;
+    bool hit = (S.xfer_cur >> 3) == unit;
+    for (int i = 0; voices && !hit && i < 24; i++) {
+        const Voice *v = &V[i];
+        uint32_t a = v->cur & (SPU_RAM_SIZE - 1);
+        hit = v->decoded && v->phase != ADSR_OFF &&
+              ((a >> 3) == unit || (((a + 8) & (SPU_RAM_SIZE - 1)) >> 3) == unit);
+    }
+    if (hit) {
+        S.stat |= 0x40;
+        irq_raise(IRQ_SPU);
+    }
+}
+
 static const int k_pos[5] = {0, 60, 115, 98, 122};
 static const int k_neg[5] = {0, 0, -52, -55, -60};
 
@@ -561,14 +591,19 @@ void spu_write16(uint32_t addr, uint32_t val) {
         S.rev_base = v;
         S.rev_cur = (uint32_t)v * 8;
         break;
-    case 0x1A4: S.irq_addr = v; break;
+    case 0x1A4:
+        S.irq_addr = v;
+        spu_irq_check_idle(true);
+        break;
     case 0x1A6:
         S.xfer_addr = v;
         S.xfer_cur = (uint32_t)v * 8;
+        spu_irq_check_idle(false);
         break;
     case 0x1A8: /* manual transfer FIFO */
         sram_write16(S.xfer_cur, v);
         S.xfer_cur = (S.xfer_cur + 2) & (SPU_RAM_SIZE - 1);
+        spu_irq_check_idle(false);
         break;
     case 0x1AA:
         if ((S.ctrl ^ v) & 0x8005)
@@ -577,6 +612,7 @@ void spu_write16(uint32_t addr, uint32_t val) {
         if (!(v & 0x40)) {
             S.stat &= (uint16_t)~0x40; /* acknowledge IRQ */
         }
+        spu_irq_check_idle(true);
         break;
     case 0x1AC: S.xfer_ctrl = v; break;
     case 0x1AE: break;
@@ -600,6 +636,7 @@ void spu_dma_write(uint32_t addr, uint32_t words) {
         sram_write16(S.xfer_cur, (uint16_t)(w >> 16));
         S.xfer_cur = (S.xfer_cur + 2) & (SPU_RAM_SIZE - 1);
     }
+    spu_irq_check_idle(false);
 }
 
 void spu_dma_read(uint32_t addr, uint32_t words) {
@@ -612,4 +649,5 @@ void spu_dma_read(uint32_t addr, uint32_t words) {
         mem_w32(addr + i * 4, w);
         S.xfer_cur = (a + 4) & (SPU_RAM_SIZE - 1);
     }
+    spu_irq_check_idle(false);
 }
