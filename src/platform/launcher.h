@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-#define PORT_VERSION "0.1.1"
+#define PORT_VERSION "0.1.2"
 
 /* Runs the launcher in `win` until the player starts the game (returns
  * true) or quits (false). `cfg` holds the settings for this run and is
