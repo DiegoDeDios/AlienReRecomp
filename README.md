@@ -298,8 +298,12 @@ comparison.
 
 Both release scripts build `GAME_CODE=interpreted` packages; no disc image
 is needed, so the GitHub Actions workflow
-(`.github/workflows/release.yml`) builds them too, for every push to
-`main` and on demand.
+(`.github/workflows/release.yml`) builds them too: for every pull request
+into `main`, every push to `main` and on demand. A pull request can only be
+merged once **Build (macOS)**, **Build (Windows)** and **Build (Linux)**
+have passed (required checks of `main`, with **Version bump** below); the
+packages of each run are kept as workflow artifacts for 14 days, handy for
+trying a pull request before merging it.
 
 **Every merged pull request is a release.** The version lives in one place,
 `PORT_VERSION` in `src/platform/launcher.h`, and each pull request into
@@ -307,7 +311,8 @@ is needed, so the GitHub Actions workflow
 `.github/workflows/version-check.yml`, which runs
 `tools/check_version_bump.sh`; it can be run locally the same way). When
 the merge reaches `main`, the release workflow tags the commit
-`v<version>` and creates a **draft** GitHub release with the macOS, Windows
+`v<version>` and creates a **draft** GitHub release, **ARR v<version>**,
+with the macOS, Windows
 and Linux packages, `packaging/RELEASE_NOTES.md` and the list of pull
 requests since the last release. Review the draft and publish it by hand.
 Pushing a `v*` tag by hand still works too (it must match `PORT_VERSION`).
