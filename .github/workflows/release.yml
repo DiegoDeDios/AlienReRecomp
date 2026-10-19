@@ -3,21 +3,62 @@
 # game's code is interpreted from it (GAME_CODE=interpreted). That is also
 # why no disc image is needed here.
 #
-# Runs on demand (Actions > Release builds > Run workflow) and for version
-# tags (v*). A tag also creates a *draft* GitHub release with both packages
-# attached; review and publish it by hand.
+# Runs for every push to main, on demand (Actions > Release builds > Run
+# workflow) and for version tags (v*).
+#
+# Releases: every pull request raises PORT_VERSION in src/platform/
+# launcher.h (enforced by version-check.yml). When the merge reaches main
+# and v<PORT_VERSION> is not tagged yet, this workflow tags the commit and
+# creates a *draft* GitHub release with the three packages, the notes from
+# packaging/RELEASE_NOTES.md and the pull requests since the last release;
+# review and publish it by hand. Pushing a v* tag by hand does the same for
+# that commit (the tag must match PORT_VERSION).
 name: Release builds
 
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     tags: ["v*"]
 
 permissions:
   contents: write
 
 jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the existing tags
+      - name: Version and whether to release it
+        id: v
+        run: |
+          version=$(sed -n 's/^#define PORT_VERSION "\(.*\)"/\1/p' src/platform/launcher.h)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          release=false
+          case "$GITHUB_REF" in
+          refs/heads/main)
+            if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+              echo "::warning::v$version is already tagged, so this push is not released. Raise PORT_VERSION in src/platform/launcher.h."
+            else
+              release=true
+            fi ;;
+          refs/tags/v*)
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match PORT_VERSION $version"
+              exit 1
+            fi
+            release=true ;;
+          esac
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "PORT_VERSION $version, release: $release"
+
   macos:
+    needs: version
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v7
@@ -31,6 +72,7 @@ jobs:
           path: build-mac/release/*.zip
 
   windows:
+    needs: version
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -44,6 +86,7 @@ jobs:
           path: build-win/release/*.zip
 
   linux:
+    needs: version
     runs-on: ubuntu-24.04
     # Ubuntu 22.04 (glibc 2.35) so the program also runs on older systems
     container: ubuntu:22.04
@@ -59,19 +102,31 @@ jobs:
           path: build-linux-x86_64/release/*.tar.gz
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [macos, windows, linux]
+    if: needs.version.outputs.release == 'true'
+    needs: [version, macos, windows, linux]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           path: dist
+      - name: Tag the merge
+        if: github.ref == 'refs/heads/main'
+        env:
+          TAG: v${{ needs.version.outputs.version }}
+        run: |
+          # pushed with the workflow's token, so it does not start this
+          # workflow again
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              tag -a "$TAG" -m "Alien Resurrection native port $TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG"
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.version.outputs.version }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --draft \
-            --title "Alien Resurrection native port $GITHUB_REF_NAME" \
-            --notes-file packaging/RELEASE_NOTES.md \
+          gh release create "$TAG" --draft --verify-tag \
+            --title "Alien Resurrection native port $TAG" \
+            --notes-file packaging/RELEASE_NOTES.md --generate-notes \
             dist/macos/*.zip dist/windows/*.zip dist/linux/*.tar.gz
