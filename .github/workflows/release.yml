@@ -3,29 +3,41 @@
 # game's code is interpreted from it (GAME_CODE=interpreted). That is also
 # why no disc image is needed here.
 #
-# Runs for every push to main, on demand (Actions > Release builds > Run
-# workflow) and for version tags (v*).
+# Runs for every pull request into main, every push to main, on demand
+# (Actions > Build and release > Run workflow) and for version tags (v*).
+#
+# Pull requests: the three builds ("Build (macOS)", "Build (Windows)",
+# "Build (Linux)") are required status checks of main, so nothing that
+# fails to build can be merged.
 #
 # Releases: every pull request raises PORT_VERSION in src/platform/
 # launcher.h (enforced by version-check.yml). When the merge reaches main
 # and v<PORT_VERSION> is not tagged yet, this workflow tags the commit and
-# creates a *draft* GitHub release with the three packages, the notes from
-# packaging/RELEASE_NOTES.md and the pull requests since the last release;
-# review and publish it by hand. Pushing a v* tag by hand does the same for
-# that commit (the tag must match PORT_VERSION).
-name: Release builds
+# creates a *draft* GitHub release "ARR v<PORT_VERSION>" with the three
+# packages, the notes from packaging/RELEASE_NOTES.md and the pull requests
+# since the last release; review and publish it by hand. Pushing a v* tag
+# by hand does the same for that commit (the tag must match PORT_VERSION).
+name: Build and release
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
+
+# a new push to a pull request replaces its running builds
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   version:
+    name: Version
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.v.outputs.version }}
@@ -58,6 +70,7 @@ jobs:
           echo "PORT_VERSION $version, release: $release"
 
   macos:
+    name: Build (macOS)
     needs: version
     runs-on: macos-14
     steps:
@@ -70,8 +83,10 @@ jobs:
         with:
           name: macos
           path: build-mac/release/*.zip
+          retention-days: 14
 
   windows:
+    name: Build (Windows)
     needs: version
     runs-on: ubuntu-24.04
     steps:
@@ -84,8 +99,10 @@ jobs:
         with:
           name: windows
           path: build-win/release/*.zip
+          retention-days: 14
 
   linux:
+    name: Build (Linux)
     needs: version
     runs-on: ubuntu-24.04
     # Ubuntu 22.04 (glibc 2.35) so the program also runs on older systems
@@ -100,11 +117,15 @@ jobs:
         with:
           name: linux
           path: build-linux-x86_64/release/*.tar.gz
+          retention-days: 14
 
   release:
+    name: Release
     if: needs.version.outputs.release == 'true'
     needs: [version, macos, windows, linux]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # the tag and the draft release
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -119,7 +140,7 @@ jobs:
           # workflow again
           git -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              tag -a "$TAG" -m "Alien Resurrection native port $TAG" "$GITHUB_SHA"
+              tag -a "$TAG" -m "ARR $TAG" "$GITHUB_SHA"
           git push origin "refs/tags/$TAG"
       - name: Draft release
         env:
@@ -127,6 +148,6 @@ jobs:
           TAG: v${{ needs.version.outputs.version }}
         run: |
           gh release create "$TAG" --draft --verify-tag \
-            --title "Alien Resurrection native port $TAG" \
+            --title "ARR $TAG" \
             --notes-file packaging/RELEASE_NOTES.md --generate-notes \
             dist/macos/*.zip dist/windows/*.zip dist/linux/*.tar.gz
