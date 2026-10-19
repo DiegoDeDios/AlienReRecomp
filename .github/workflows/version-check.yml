@@ -1,0 +1,23 @@
+# Every pull request into main must raise PORT_VERSION (src/platform/
+# launcher.h): merging it releases that version (release.yml tags it and
+# drafts the GitHub release). Make "Version bump" a required status check
+# of main so a pull request cannot be merged without it.
+name: Version check
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  version-bump:
+    name: Version bump
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # main and the existing tags
+      - name: PORT_VERSION is higher than on main and not released yet
+        run: tools/check_version_bump.sh "origin/$GITHUB_BASE_REF"
