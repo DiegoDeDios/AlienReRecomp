@@ -34,6 +34,8 @@ const ActionInfo g_actions[ACT_COUNT] = {
     [ACT_SELECT] = {"select", "Look hold", "Select", false},
     [ACT_SPRINT] = {"sprint", "Sprint", "", false},
     [ACT_FAST_FORWARD] = {"fast_forward", "Fast forward", "", false},
+    [ACT_QUICK_SAVE] = {"quick_save", "Quick save", "", false},
+    [ACT_QUICK_LOAD] = {"quick_load", "Quick load", "", false},
 };
 
 static const uint16_t g_act_button[ACT_COUNT] = {
@@ -77,6 +79,8 @@ void settings_default_bindings(Settings *s) {
         {ACT_SELECT, SDL_SCANCODE_TAB, 0, SDL_GAMEPAD_BUTTON_BACK},
         {ACT_SPRINT, SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT, SDL_GAMEPAD_BUTTON_LEFT_STICK},
         {ACT_FAST_FORWARD, SDL_SCANCODE_GRAVE, 0, -1},
+        {ACT_QUICK_SAVE, SDL_SCANCODE_F5, 0, -1},
+        {ACT_QUICK_LOAD, SDL_SCANCODE_F9, 0, -1},
     };
     for (size_t i = 0; i < sizeof d / sizeof d[0]; i++) {
         s->key[d[i].a][0] = d[i].k0;
@@ -118,6 +122,7 @@ void settings_defaults(Settings *s) {
     s->sprint = true;
     s->sprint_pct = 190;
     s->infinite_flashlight = true;
+    s->quick_save = true;
     s->cpu_pct = 300;
     s->enemy_damage_pct = 100;
     for (int g = 0; g < DMG_GROUP_COUNT; g++)
@@ -312,6 +317,7 @@ bool settings_load(Settings *s, const char *path) {
             if (!strcmp(k, "sprint")) s->sprint = parse_bool(v);
             else if (!strcmp(k, "sprint_speed")) s->sprint_pct = clampi(atoi(v), 100, 300);
             else if (!strcmp(k, "infinite_flashlight")) s->infinite_flashlight = parse_bool(v);
+            else if (!strcmp(k, "quick_save")) s->quick_save = parse_bool(v);
             else if (!strcmp(k, "cpu_speed")) s->cpu_pct = clampi(atoi(v), 50, 800);
         } else if (!strcmp(sect, "enemy_damage")) {
             int pct = clampi(atoi(v), 0, ENEMY_DAMAGE_MAX);
@@ -370,8 +376,9 @@ bool settings_save(const Settings *s, const char *path) {
             tf[s->pgxp], tf[s->vsync], tf[s->smooth], tf[s->fullscreen], tf[s->show_fps],
             s->gpu_driver);
     fprintf(f, "[gameplay]\nsprint = %s\nsprint_speed = %d\ninfinite_flashlight = %s\n"
-               "cpu_speed = %d\n\n",
-            tf[s->sprint], s->sprint_pct, tf[s->infinite_flashlight], s->cpu_pct);
+               "quick_save = %s\ncpu_speed = %d\n\n",
+            tf[s->sprint], s->sprint_pct, tf[s->infinite_flashlight], tf[s->quick_save],
+            s->cpu_pct);
     fprintf(f, "# damage the player takes, percent of the original (all x group)\n"
                "[enemy_damage]\nall = %d\n", s->enemy_damage_pct);
     for (int g = 0; g < DMG_GROUP_COUNT; g++)
@@ -447,6 +454,8 @@ void input_read(const Settings *s, SDL_Gamepad *pad, uint32_t mouse_buttons, Inp
     if (held[ACT_LOOK_RIGHT]) out->rx = 0xFF;
     out->sprint = held[ACT_SPRINT];
     out->fast_forward = held[ACT_FAST_FORWARD] || pad_held(pad, s->pad[ACT_FAST_FORWARD]);
+    out->quick_save = held[ACT_QUICK_SAVE] || pad_held(pad, s->pad[ACT_QUICK_SAVE]);
+    out->quick_load = held[ACT_QUICK_LOAD] || pad_held(pad, s->pad[ACT_QUICK_LOAD]);
 
     static bool stick_sprint;
     if (!pad) {

@@ -5,6 +5,7 @@
  * address (0x81) never answers here.
  */
 #include "psx.h"
+#include "savestate.h"
 
 typedef struct {
     uint16_t buttons;  /* 1 = pressed */
@@ -55,6 +56,14 @@ static void sio_ack_event(int64_t now, int64_t late) {
             irq_raise(IRQ_SIO0);
         }
     }
+}
+
+/* save states: pad modes (analog, configuration) and the port's
+ * transaction state; the buttons are set again from the frontend */
+void sio_state(StateIO *s) {
+    state_section(s, "SIO ");
+    STATE(s, g_pad);
+    STATE(s, S);
 }
 
 void sio_init(void) {

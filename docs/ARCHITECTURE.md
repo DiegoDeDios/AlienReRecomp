@@ -273,6 +273,41 @@ an empty flashlight cannot be switched on. With the option on (default;
 wrapper fills the battery before and after the update, so it never runs
 down and the HUD shows 100%. Not during attract demos.
 
+### Quick save (`src/runtime/savestate.c`)
+
+F5 / F9 (bindable; also in the pause menu) save and restore the whole
+emulated machine: CPU and GTE registers, RAM and scratchpad, the scheduler,
+interrupt registers, BIOS bookkeeping, DMA, timers, GPU state and VRAM (read
+back from the renderer, re-uploaded after a load), CD controller and its
+audio buffer, SPU RAM and voices, MDEC, controller port, the widescreen
+point sets and the frontend's frame counter. Memory cards are left out.
+Each module has one `*_state(StateIO *)` function that both writes and
+reads, with a section tag checked on load; a file header records the port
+version, the build type, the disc and a CRC. A load first keeps the current
+state and falls back on it if the file cannot be read.
+
+Snapshots are taken and restored only at the entry of libetc's `VSync`
+(wrapped in `native.c`): the menus wait in it and gameplay polls it every
+frame, on the main thread. The host has to be in the same place as well:
+
+* Recompiled builds mirror the game's call chain on the host stack, so a
+  state is restored only where the return addresses on the game's stack
+  (and `ra`, `sp`) match the ones it was saved with. The game runs its menus
+  and levels in the same main loop, so this works in game and in the title
+  menu.
+* Interpreted builds run guest calls in one loop; only native overrides add
+  host frames. A state is restored at any `VSync` call with the same
+  overrides active, and the interpreter then continues at the restored
+  return address (`g_state_loads`).
+
+A request waits for such a point (not in an interrupt handler, no memory
+card access in progress) and gives up after three seconds. The
+interpreter's instruction counter is global so it can be saved too.
+`--save-state` / `--load-state` make the round trip testable: a run that
+saves at frame N and one that loads that state are byte-identical
+afterwards, in RAM and on screen, with both renderers and in both build
+types.
+
 ### Enemy damage
 
 Settings › Enemy damage scales the damage the player takes from enemies:

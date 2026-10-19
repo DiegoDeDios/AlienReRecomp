@@ -11,12 +11,26 @@
  * same register/memory moves of projected vertices.
  */
 #include "psx.h"
+#include "savestate.h"
 
 /* When true, jal/jalr targets that have recompiled code are executed
  * natively; when false everything is interpreted (verification). */
 bool g_interp_call_native = true;
 /* Optional per-block hook for trace comparison. */
 void (*g_interp_block_hook)(uint32_t pc);
+
+/* Instructions run, for cycle accounting (every 64th charges 64). Kept
+ * across nested runs, so a save state can carry it. */
+static uint64_t g_steps;
+
+/* native overrides being run, innermost last (save states, savestate.c) */
+uint32_t g_ov_chain[16];
+int g_ov_depth;
+
+void interp_state(StateIO *s) {
+    state_section(s, "INTP");
+    STATE(s, g_steps);
+}
 
 static inline uint32_t sx16(uint32_t v) { return (uint32_t)(int32_t)(int16_t)v; }
 
@@ -31,7 +45,6 @@ void interp_run(CPU *c, uint32_t pc, uint32_t stop_ra) {
     bool in_delay = false;
     uint32_t branch_target = 0;
     bool branch_taken = false;
-    uint64_t steps = 0;
 
     for (;;) {
         if (pc == stop_ra && !in_delay)
@@ -41,7 +54,7 @@ void interp_run(CPU *c, uint32_t pc, uint32_t stop_ra) {
             fatal("interpreter: pc out of RAM: %08X", pc);
         uint32_t w = mem_r32(pc);
         c->pc = pc;
-        if (++steps % 64 == 0) {
+        if (++g_steps % 64 == 0) {
             c->cycles += (64 * g_cycle_scale) >> 4;
             if (c->cycles >= c->next_event)
                 cpu_service_events(c);
@@ -235,8 +248,15 @@ void interp_run(CPU *c, uint32_t pc, uint32_t stop_ra) {
                     if (link)
                         c->r[link_reg] = ret;
                     uint32_t back = link ? ret : c->r[31];
+                    if (g_ov_depth < (int)(sizeof g_ov_chain / sizeof g_ov_chain[0]))
+                        g_ov_chain[g_ov_depth] = target;
+                    g_ov_depth++;
+                    unsigned loads = g_state_loads;
                     ov(c);
-                    pc = back;
+                    g_ov_depth--;
+                    /* a save state loaded inside the override resumes the
+                     * caller it was taken in: its return address */
+                    pc = loads == g_state_loads ? back : c->r[31];
                     next_pc = pc + 4;
                     if (pend.reg) {
                         c->r[pend.reg] = pend.val;

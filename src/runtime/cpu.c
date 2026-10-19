@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "psx.h"
+#include "savestate.h"
 
 CPU *g_cpu;
 int g_log_level = LOG_INFO;
@@ -170,10 +171,15 @@ void call_indirect(CPU *c, uint32_t addr) {
     if (p == 0xC0) { bios_call_C0(c); return; }
     if (g_interp_only) {
         RecompFunc ov = native_lookup(addr);
-        if (ov)
+        if (ov) {
+            if (g_ov_depth < (int)(sizeof g_ov_chain / sizeof g_ov_chain[0]))
+                g_ov_chain[g_ov_depth] = addr;
+            g_ov_depth++;
             ov(c);
-        else
+            g_ov_depth--;
+        } else {
             interp_call(c, addr);
+        }
         return;
     }
     RecompFunc f = module_lookup(addr);
@@ -303,6 +309,19 @@ void cpu_request_check(void) {
         g_cpu->next_event = g_cpu->cycles;
 }
 
+/* save states: the CPU, the scheduler (times only; the handlers are fixed
+ * at start-up) and the interrupt registers */
+void cpu_state(StateIO *s) {
+    state_section(s, "CPU ");
+    STATE(s, *g_cpu);
+    for (int i = 0; i < EV_COUNT; i++) {
+        STATE(s, g_events[i].when);
+        STATE(s, g_events[i].active);
+    }
+    STATE(s, g_istat);
+    STATE(s, g_imask);
+}
+
 /* ------------------------------------------------------------------ */
 /* Interrupts                                                          */
 
@@ -328,6 +347,8 @@ void cpu_service_events(CPU *c) {
 static host_jmp_buf *g_exc_jmp;
 static int g_exc_depth;
 
+int cpu_exception_depth(void) { return g_exc_depth; }
+
 void cpu_take_interrupt(CPU *c) {
     LOGD("irq", "take interrupt istat=%03X imask=%03X pc~%08X", g_istat, g_imask, c->pc);
     uint32_t saved_r[32];
@@ -342,6 +363,9 @@ void cpu_take_interrupt(CPU *c) {
 
     host_jmp_buf jb;
     host_jmp_buf *prev = g_exc_jmp;
+    /* ReturnFromException unwinds past the overrides the handler was
+     * running, without their bookkeeping */
+    int ov_depth = g_ov_depth;
     g_exc_jmp = &jb;
     g_exc_depth++;
     if (host_setjmp(jb) == 0) {
@@ -351,6 +375,7 @@ void cpu_take_interrupt(CPU *c) {
     }
     g_exc_depth--;
     g_exc_jmp = prev;
+    g_ov_depth = ov_depth;
 
     memcpy(c->r, saved_r, sizeof saved_r);
     c->hi = saved_hi;

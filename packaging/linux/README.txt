@@ -28,6 +28,8 @@ and Icon= point to this folder, and copy it to ~/.local/share/applications/.
 
 In game: F2 (or Select+Start on a controller) opens the pause menu with
 settings and controls, F11 toggles fullscreen, F12 saves a screenshot.
+F5 quick saves anywhere (one slot, quicksave.state next to the memory
+cards) and F9 returns to that moment.
 
 Files
 -----

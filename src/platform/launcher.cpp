@@ -529,18 +529,31 @@ void menu_panel(ImDrawList *dl, float y0, float y1, float w) {
 }
 
 void draw_pause(ImDrawList *dl) {
-    enum { P_RESUME, P_SETTINGS, P_CONTROLS, P_QUIT, P_COUNT };
-    static const char *const items[P_COUNT] = {"RESUME", "SETTINGS", "CONTROLS",
-                                               "QUIT TO DESKTOP"};
+    enum { P_RESUME, P_QUICK_SAVE, P_QUICK_LOAD, P_SETTINGS, P_CONTROLS, P_QUIT, P_COUNT };
+    static const char *const names[P_COUNT] = {"RESUME",   "QUICK SAVE", "QUICK LOAD",
+                                               "SETTINGS", "CONTROLS",   "QUIT TO DESKTOP"};
+    /* the quick save entries only while that feature is on */
+    const char *items[P_COUNT];
+    int ids[P_COUNT], n = 0;
+    for (int i = 0; i < P_COUNT; i++)
+        if (L.cfg->quick_save || (i != P_QUICK_SAVE && i != P_QUICK_LOAD)) {
+            ids[n] = i;
+            items[n++] = names[i];
+        }
+    if (L.menu_sel >= n)
+        L.menu_sel = 0;
     float step = 34 * L.U * 1.38f;
-    float y0 = L.S.y * 0.5f - step * P_COUNT * 0.5f + 30 * L.U;
-    menu_panel(dl, y0 - 128 * L.U, y0 + step * P_COUNT + 14 * L.U, 560 * L.U);
+    float y0 = L.S.y * 0.5f - step * (float)n * 0.5f + 30 * L.U;
+    menu_panel(dl, y0 - 128 * L.U, y0 + step * (float)n + 14 * L.U, 560 * L.U);
     header(dl, "PAUSED", L.S.x * 0.5f, y0 - 92 * L.U);
-    int activate = menu(dl, items, P_COUNT, &L.menu_sel, y0, nullptr);
+    int sel = menu(dl, items, n, &L.menu_sel, y0, nullptr);
+    int activate = sel >= 0 ? ids[sel] : -1;
     if (nav_back())
         activate = P_RESUME;
     switch (activate) {
     case P_RESUME: L.overlay_result = OVERLAY_RESUME; break;
+    case P_QUICK_SAVE: L.overlay_result = OVERLAY_QUICK_SAVE; break;
+    case P_QUICK_LOAD: L.overlay_result = OVERLAY_QUICK_LOAD; break;
     case P_SETTINGS: open_page(PAGE_SETTINGS); break;
     case P_CONTROLS: open_page(PAGE_CONTROLS); break;
     case P_QUIT:
@@ -887,6 +900,11 @@ void draw_settings(ImDrawList *dl) {
                "The flashlight's battery never runs down. In the original it lasts about 20 "
                "seconds and recharges while switched off. Added by this port."))
         mark(&c->infinite_flashlight);
+    if (toggle("Quick save", &c->quick_save,
+               "Save the game anywhere with F5 and return to that moment with F9 (keys in "
+               "Controls; also in the pause menu). One slot, kept apart from the memory card "
+               "saves. Added by this port."))
+        mark(&c->quick_save);
     restart_tag(c->skip_intro != L.info.running_skip_intro);
     if (toggle("Skip intro movies", &c->skip_intro,
                ig ? "Start at the title menu, skipping the logos and the opening movie. Takes "
@@ -1704,4 +1722,78 @@ extern "C" void overlay_close(void) {
     save_if_dirty();
     L.cap.action = -1;
     L.ingame = false;
+}
+
+/* ---- in-game messages (toast) ---- */
+
+static struct {
+    char text[128];
+    bool error;
+    Uint64 shown, until;
+} T;
+
+extern "C" void toast_show(SDL_Window *win, SDL_GPUDevice *dev, SDL_GPUTextureFormat fmt,
+                           const char *text, bool error) {
+    if (!win || !dev || fmt == SDL_GPU_TEXTUREFORMAT_INVALID)
+        return;
+    if (!L.imgui_ready) {
+        imgui_setup(win, dev, fmt);
+        ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);
+        L.imgui_ready = true;
+    }
+    snprintf(T.text, sizeof T.text, "%s", text);
+    T.error = error;
+    T.shown = SDL_GetTicks();
+    T.until = T.shown + (error ? 3500 : 1800);
+}
+
+extern "C" bool toast_frame(void) {
+    if (!T.until || L.ingame || !L.imgui_ready)
+        return false;
+    Uint64 now = SDL_GetTicks();
+    if (now >= T.until) {
+        T.until = 0;
+        return false;
+    }
+    /* drawn over the game: leave the mouse cursor (captured for mouse
+     * look) alone */
+    ImGuiIO &io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+    ImGui_ImplSDLGPU3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+    io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+    ImVec2 S = io.DisplaySize;
+    float U = fmaxf(0.5f, fminf(S.y / 720.0f, S.x / 1100.0f));
+    /* fade in and out */
+    float a = fminf(1.0f, fminf((float)(now - T.shown) / 120.0f, (float)(T.until - now) / 400.0f));
+    float fs = 21 * U, pad = 14 * U;
+    ImVec2 ts = text_size(L.f_label, fs, T.text);
+    ImVec2 p0(28 * U, S.y - 36 * U - ts.y - pad * 2), p1(p0.x + ts.x + pad * 2 + 10 * U, S.y - 36 * U);
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    ImU32 edge = T.error ? C_WARN : C_ACCENT;
+    dl->AddRectFilled(p0, p1, IM_COL32(4, 7, 6, (int)(225 * a)), 6 * U);
+    dl->AddRectFilled(p0, ImVec2(p0.x + 4 * U, p1.y), (edge & 0x00FFFFFF) | ((ImU32)(255 * a) << 24),
+                      6 * U, ImDrawFlags_RoundCornersLeft);
+    dl->AddText(L.f_label, fs, ImVec2(p0.x + pad + 10 * U, p0.y + pad),
+                (C_TEXT & 0x00FFFFFF) | ((ImU32)(255 * a) << 24), T.text);
+    ImGui::Render();
+    return true;
+}
+
+extern "C" void toast_render(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *target, int w, int h) {
+    (void)w, (void)h;
+    if (!L.imgui_ready)
+        return;
+    ImDrawData *dd = ImGui::GetDrawData();
+    if (!dd || dd->DisplaySize.x <= 0 || dd->DisplaySize.y <= 0)
+        return;
+    ImGui_ImplSDLGPU3_PrepareDrawData(dd, cmd);
+    SDL_GPUColorTargetInfo ct = {};
+    ct.texture = target;
+    ct.load_op = SDL_GPU_LOADOP_LOAD;
+    ct.store_op = SDL_GPU_STOREOP_STORE;
+    SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(cmd, &ct, 1, nullptr);
+    ImGui_ImplSDLGPU3_RenderDrawData(dd, cmd, rp);
+    SDL_EndGPURenderPass(rp);
 }

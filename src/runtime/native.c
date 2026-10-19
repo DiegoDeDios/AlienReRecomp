@@ -9,6 +9,7 @@
 #include "enemy_damage.h"
 #include "pgxp.h"
 #include "psx.h"
+#include "savestate.h"
 
 /* libetc VSync's wait helper: v_wait(target, n) spins until the vblank
  * counter reaches `target`, giving up after n<<15 loop iterations. That
@@ -34,6 +35,15 @@ static void vsync_wait(CPU *c, uint32_t vcount_addr) {
 
 void ALIEN_80082C4C(CPU *c) { vsync_wait(c, 0x8009D240u); }
 void SLUS_800163D4(CPU *c) { vsync_wait(c, 0x8001F6C8u); }
+
+/* libetc VSync(mode): the menus wait in it and gameplay polls it with -1
+ * every frame, so its entry is where save states are taken and restored
+ * (savestate.c) */
+void ALIEN_80082AD4__orig(CPU *c);
+void ALIEN_80082AD4(CPU *c) {
+    state_safe_point(c);
+    ALIEN_80082AD4__orig(c);
+}
 
 /* Screen-space quad subdivision (hand-written renderer helper). For large
  * near-camera polygons the game splits a textured quad (POLY_GT4 at a0)

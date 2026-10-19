@@ -25,6 +25,7 @@
 #include "../runtime/camera.h"
 #include "../runtime/psx.h"
 #include "../runtime/pgxp.h"
+#include "../runtime/savestate.h"
 #include "../runtime/widescreen.h"
 #include "discinfo.h"
 #include "launcher.h"
@@ -46,6 +47,8 @@ static struct {
     struct { long start, count, step; char prefix[512]; } record;
     struct { long frame; char path[512]; } dumps[16];
     int ndumps;
+    struct { long frame; char path[512]; bool load; } states[8];
+    int nstates;
     struct { long frame; uint32_t addr, value; int size; } pokes[32];
     int npokes;
     struct { long frame; long len; uint16_t button; bool sprint; } presses[256];
@@ -96,6 +99,57 @@ static bool g_overlay_want;    /* open it once this vblank's input is read */
 static int g_combo_frames;
 static bool g_combo_latched;   /* Select+Start kept from the game until released */
 static bool g_input_hold;      /* after closing: buttons still held stay with the overlay */
+
+/* ------------------------------------------------------------------ */
+/* quick save / quick load (save states, runtime/savestate.c)          */
+
+static const char *quicksave_path(void) {
+    static char path[1100];
+    snprintf(path, sizeof path, "%s/quicksave.state", platform_data_dir());
+    return path;
+}
+
+static void quick_request(bool load) {
+    if (state_request_pending())
+        return;
+    if (load)
+        state_request_load(quicksave_path());
+    else
+        state_request_save(quicksave_path());
+}
+
+/* the frame counter goes with the machine, so frame-numbered test options
+ * (--dump-ram, --shot) line up after a load */
+void platform_state(StateIO *s) {
+    state_section(s, "HOST");
+    int64_t f = g_frame;
+    STATE(s, f);
+    g_frame = (long)f;
+}
+
+void platform_state_done(bool save, bool ok, const char *message) {
+    char text[160];
+    if (ok)
+        snprintf(text, sizeof text, "%s", save ? "Quick saved" : "Quick loaded");
+    else
+        snprintf(text, sizeof text, "%s: %s", save ? "Quick save failed" : "Can't quick load",
+                 message ? message : "error");
+    LOGI("state", "frame %ld: %s", g_frame, text);
+    if (g_win && g_gpu_ok)
+        toast_show(g_win, render_gpu_device(), render_window_format(), text, !ok);
+}
+
+static float g_mouse_dx, g_mouse_dy;
+
+void platform_state_loaded(void) {
+    /* sound queued from before the load, the pacing clock and mouse motion
+     * belong to the old moment */
+    if (g_audio)
+        SDL_ClearAudioStream(g_audio);
+    g_next_frame_ns = 0;
+    g_mouse_dx = g_mouse_dy = 0;
+    g_cam_mouse_x = g_cam_mouse_y = 0;
+}
 
 /* --overlay-keys: scripted input for testing the overlay. Tokens are SDL
  * key names, "pad:BUTTON[+BUTTON][:TICKS]" (a virtual controller),
@@ -192,7 +246,6 @@ static uint16_t scripted_buttons(bool *sprint) {
  * directly (camera.h), MOUSE_LOOK_UNITS game angle units (4096 = a full
  * turn) per count at sensitivity 1 */
 #define MOUSE_LOOK_UNITS 0.2f
-static float g_mouse_dx, g_mouse_dy;
 static bool g_mouse_captured;
 static uint32_t g_mouse_buttons;
 
@@ -293,6 +346,13 @@ static void poll_input(void) {
         if (in.ry != 0x80) ry = in.ry;
         sprint |= in.sprint;
         g_turbo = in.fast_forward;
+        static bool qs_held, ql_held;
+        if (g_cfg.quick_save && in.quick_save && !qs_held)
+            quick_request(false);
+        if (g_cfg.quick_save && in.quick_load && !ql_held)
+            quick_request(true);
+        qs_held = in.quick_save;
+        ql_held = in.quick_load;
         if (g_mouse_captured && g_cfg.mouse_look)
             mdx += g_mouse_dx, mdy += g_mouse_dy;
         g_mouse_dx = g_mouse_dy = 0;
@@ -742,6 +802,8 @@ static void run_overlay(void) {
         LOGI("overlay", "quit to desktop");
         exit(0);
     }
+    if (result == OVERLAY_QUICK_SAVE || result == OVERLAY_QUICK_LOAD)
+        quick_request(result == OVERLAY_QUICK_LOAD);
     LOGI("overlay", "resumed");
     if (g_audio)
         SDL_ResumeAudioStreamDevice(g_audio);
@@ -783,6 +845,16 @@ void platform_vblank(void) {
                 fclose(f);
                 LOGI("main", "frame %ld: dumped RAM to %s", g_frame, opt.dumps[i].path);
             }
+        }
+    state_tick();
+    for (int i = 0; i < opt.nstates; i++)
+        if (opt.states[i].frame == g_frame) {
+            /* once: a load sets the frame counter back */
+            opt.states[i].frame = -1;
+            if (opt.states[i].load)
+                state_request_load(opt.states[i].path);
+            else
+                state_request_save(opt.states[i].path);
         }
     for (int i = 0; i < opt.npokes; i++)
         if (opt.pokes[i].frame == g_frame) {
@@ -880,6 +952,9 @@ void platform_vblank(void) {
         run_overlay();
         poll_input();
     }
+    /* a quick save / load message over the game */
+    if (g_gpu_ok)
+        render_set_overlay(toast_frame() ? toast_render : NULL);
     render_present();
     audio_rate_control();
     /* pacing: a timer caps the frame rate (at the display refresh when it is
@@ -1129,6 +1204,16 @@ static void parse_args(int argc, char **argv) {
                 opt.dumps[opt.ndumps].frame = atol(v);
                 snprintf(opt.dumps[opt.ndumps].path, 512, "%s", colon + 1);
                 opt.ndumps++;
+            }
+            i++;
+        } else if ((!strcmp(a, "--save-state") || !strcmp(a, "--load-state")) && v) {
+            /* FRAME:PATH: request a save state / load at that frame */
+            const char *colon = strchr(v, ':');
+            if (colon && opt.nstates < 8) {
+                opt.states[opt.nstates].frame = atol(v);
+                opt.states[opt.nstates].load = !strcmp(a, "--load-state");
+                snprintf(opt.states[opt.nstates].path, 512, "%s", colon + 1);
+                opt.nstates++;
             }
             i++;
         } else if (!strcmp(a, "--poke") && v) {
