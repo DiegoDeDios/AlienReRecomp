@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #include "psx.h"
+#include "savestate.h"
 
 #define SECTOR_CYCLES_1X (PSX_CPU_HZ / 75)
 #define ACK_DELAY 25000
@@ -566,6 +567,20 @@ static void exec_command(uint8_t cmd) {
 
 /* ------------------------------------------------------------------ */
 /* registers                                                           */
+
+/* save states: the controller, its sector buffers and interrupt queue, and
+ * the XA / CD-DA audio waiting for the SPU */
+void cdrom_state(StateIO *s) {
+    state_section(s, "CD  ");
+    STATE(s, cd);
+    STATE(s, g_ring);
+    STATE(s, g_ring_r);
+    STATE(s, g_ring_w);
+    STATE(s, xa_old);
+    STATE(s, xa_phase);
+    STATE(s, xa_prev);
+    STATE(s, xa_cur);
+}
 
 void cdrom_init(void) {
     memset(&cd, 0, sizeof cd);

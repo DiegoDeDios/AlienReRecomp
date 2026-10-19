@@ -5,6 +5,7 @@
  * completion).
  */
 #include "psx.h"
+#include "savestate.h"
 
 enum { CH_MDEC_IN, CH_MDEC_OUT, CH_GPU, CH_CDROM, CH_SPU, CH_PIO, CH_OTC };
 
@@ -61,6 +62,13 @@ static void dma_schedule(void) {
         sched_at(EV_DMA, next);
     else
         sched_cancel(EV_DMA);
+}
+
+void dma_state(StateIO *s) {
+    state_section(s, "DMA ");
+    STATE(s, g_ch);
+    STATE(s, g_dpcr);
+    STATE(s, g_dicr);
 }
 
 void dma_init(void) {

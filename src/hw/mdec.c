@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 #include "psx.h"
+#include "savestate.h"
 
 static const uint8_t k_zigzag[64] = {
     0,  1,  8,  16, 9,  2,  3,  10, 17, 24, 32, 25, 18, 11, 4,  5,
@@ -27,6 +28,23 @@ static struct {
     size_t out_len, out_pos, out_cap;
     bool enable_in, enable_out;
 } M;
+
+void mdec_state(StateIO *s) {
+    state_section(s, "MDEC");
+    STATE(s, M.qt_y);
+    STATE(s, M.qt_c);
+    STATE(s, M.scale);
+    STATE(s, M.cmd);
+    STATE(s, M.params_left);
+    state_heap(s, (void **)&M.in, &M.in_len, &M.in_cap, sizeof *M.in);
+    STATE(s, M.qt_mode);
+    STATE(s, M.qt_pos);
+    STATE(s, M.scale_pos);
+    state_heap(s, (void **)&M.out, &M.out_len, &M.out_cap, sizeof *M.out);
+    STATE(s, M.out_pos);
+    STATE(s, M.enable_in);
+    STATE(s, M.enable_out);
+}
 
 void mdec_init(void) {
     free(M.in);

@@ -8,6 +8,7 @@
 #include "gpu.h"
 #include "pgxp.h"
 #include "psx.h"
+#include "savestate.h"
 #include "widescreen.h"
 
 uint16_t g_vram[VRAM_W * VRAM_H];
@@ -684,6 +685,39 @@ void gpu_display_info(DisplayInfo *d) {
     d->interlaced = interlace;
     d->pal = (D.mode >> 3) & 1;
     d->hres = hres;
+}
+
+/* save states: VRAM (read back from the renderer first), the drawing and
+ * display state and any half-received command or transfer */
+void gpu_state(StateIO *s) {
+    state_section(s, "GPU ");
+    if (!s->loading && g_gpu_backend->vram_sync)
+        g_gpu_backend->vram_sync(0, 0, VRAM_W, VRAM_H);
+    STATE(s, g_vram);
+    STATE(s, S);
+    STATE(s, D);
+    STATE(s, g_fifo);
+    STATE(s, g_fifo_addr);
+    STATE(s, g_gp0_src);
+    STATE(s, g_fifo_n);
+    STATE(s, g_fifo_need);
+    STATE(s, g_polyline);
+    STATE(s, g_wr);
+    STATE(s, g_rd);
+    state_heap(s, (void **)&g_wr_buf, &g_wr_count, &g_wr_cap, sizeof *g_wr_buf);
+    STATE(s, g_line_last);
+    STATE(s, g_line_flags);
+    STATE(s, g_line_shaded);
+    STATE(s, g_line_have_color);
+    STATE(s, g_line_pending_color);
+    STATE(s, g_ot_slot);
+    STATE(s, g_ot_lo);
+    STATE(s, g_ot_hi);
+    STATE(s, g_ot_n);
+    STATE(s, g_gpu_frame_counter);
+    STATE(s, g_gpu_flip_counter);
+    if (s->loading && !s->error && g_gpu_backend->vram_reload)
+        g_gpu_backend->vram_reload();
 }
 
 void gpu_vblank(void) {

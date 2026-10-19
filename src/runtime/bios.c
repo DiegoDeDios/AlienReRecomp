@@ -9,6 +9,7 @@
 #include "psx.h"
 #include "iso.h"
 #include "memcard.h"
+#include "savestate.h"
 
 #define A0 4
 #define A1 5
@@ -75,6 +76,9 @@ bool g_bios_exit_requested;
 
 static host_jmp_buf g_boot_jmp;
 static char g_pending_exec[128];
+static uint32_t g_stack_top; /* the running executable's initial sp */
+
+uint32_t bios_stack_top(void) { return g_stack_top; }
 
 /* deferred event delivery (memory card completion etc.) */
 typedef struct { uint32_t cls, spec; int64_t when; } PendingEv;
@@ -360,6 +364,7 @@ void bios_load_exe(CPU *c, const char *path, bool run) {
         fatal("no recompiled module for %s", base);
     module_activate(m);
     if (run) {
+        g_stack_top = c->r[SP];
         guest_call(c, c->pc);
         LOGI("bios", "%s returned to BIOS", base);
     }
@@ -372,6 +377,7 @@ void bios_boot(CPU *c, const char *exe) {
         char path[128];
         snprintf(path, sizeof path, "%s", g_pending_exec);
         g_pending_exec[0] = 0;
+        g_ov_depth = 0; /* LoadExec unwound past whatever was running */
         if (host_setjmp(g_boot_jmp) == 0) {
             c->r[SP] = 0x801FFF00u;
             c->r[30] = c->r[SP];
@@ -526,6 +532,34 @@ static uint32_t bios_rw(CPU *c, bool write) {
 /* DIRENTRY: name[20], attr(4), size(4), next(4), head(4), system[4] */
 static int g_find_port, g_find_idx;
 static char g_find_pat[64];
+
+bool bios_card_busy(void) {
+    if (g_npending)
+        return true;
+    for (int i = 0; i < 16; i++)
+        if (g_fd[i].used)
+            return true;
+    return false;
+}
+
+/* save states: the kernel's events, interrupt chains, heap bounds, the
+ * deferred card events and open card files (kernel RAM is in main RAM) */
+void bios_state(StateIO *s) {
+    state_section(s, "BIOS");
+    STATE(s, g_ev);
+    STATE(s, g_hook_jmpbuf);
+    STATE(s, g_chain);
+    STATE(s, g_heap_start);
+    STATE(s, g_heap_end);
+    STATE(s, g_rand_seed);
+    STATE(s, g_pending);
+    STATE(s, g_npending);
+    STATE(s, g_fd);
+    STATE(s, g_find_port);
+    STATE(s, g_find_idx);
+    STATE(s, g_find_pat);
+    STATE(s, g_stack_top);
+}
 
 static uint32_t dir_fill(uint32_t dst, int port, int start) {
     char nm[24];

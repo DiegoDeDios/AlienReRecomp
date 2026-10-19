@@ -22,7 +22,7 @@ typedef enum {
     ACT_CROSS, ACT_CIRCLE, ACT_SQUARE, ACT_TRIANGLE,
     ACT_L1, ACT_L2, ACT_R1, ACT_R2, ACT_L3, ACT_R3,
     ACT_START, ACT_SELECT,
-    ACT_SPRINT, ACT_FAST_FORWARD,
+    ACT_SPRINT, ACT_FAST_FORWARD, ACT_QUICK_SAVE, ACT_QUICK_LOAD,
     ACT_COUNT
 } Action;
 
@@ -60,6 +60,7 @@ typedef struct Settings {
     bool sprint;
     int sprint_pct;
     bool infinite_flashlight;  /* the flashlight battery never runs down */
+    bool quick_save;         /* quick save / quick load keys (save states) */
     int cpu_pct;             /* emulated CPU speed (frame rate headroom) */
     /* damage the player takes from enemies, percent of the original */
     int enemy_damage_pct;                        /* all enemies */
@@ -105,6 +106,7 @@ typedef struct InputState {
     uint16_t buttons;            /* PAD_* bits */
     uint8_t lx, ly, rx, ry;      /* analog sticks, 0x80 = centre */
     bool sprint, fast_forward;
+    bool quick_save, quick_load;
 } InputState;
 void input_read(const Settings *s, SDL_Gamepad *pad, uint32_t mouse_buttons,
                 InputState *out);

@@ -86,6 +86,7 @@ set(RUNTIME_SRC
   src/runtime/pgxp.c
   src/runtime/disc.c
   src/runtime/memcard.c
+  src/runtime/savestate.c
   src/hw/dma.c
   src/hw/timers.c
   src/hw/gpu.c

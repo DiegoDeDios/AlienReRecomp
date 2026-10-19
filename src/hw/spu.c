@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #include "psx.h"
+#include "savestate.h"
 
 #define SPU_RAM_SIZE 0x80000
 #define CYCLES_PER_SAMPLE 768
@@ -472,6 +473,15 @@ static void spu_event(int64_t now, int64_t late) {
         S.last_time += (int64_t)n * CYCLES_PER_SAMPLE;
     }
     sched_at(EV_SPU, S.last_time + BATCH * CYCLES_PER_SAMPLE);
+}
+
+/* save states: SPU RAM, voices and registers (times are absolute cycles,
+ * restored with the CPU) */
+void spu_state(StateIO *s) {
+    state_section(s, "SPU ");
+    STATE(s, g_sram);
+    STATE(s, V);
+    STATE(s, S);
 }
 
 void spu_init(void) {

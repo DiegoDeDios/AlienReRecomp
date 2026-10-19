@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "savestate.h"
+
 bool g_ws_enabled;
 bool g_ws_wide_display;
 uint32_t g_ws_3d_count;
@@ -17,6 +19,19 @@ int32_t g_ws_k_fp = 0x10000;
 static uint32_t g_set[2][SET_SIZE];
 static uint32_t g_count[2];
 static int g_cur;
+static uint32_t g_idle; /* frames without 3D, see ws_new_frame */
+
+/* save states: the projected points of the last two frames decide how the
+ * next primitives are drawn */
+void ws_state(StateIO *s) {
+    state_section(s, "WIDE");
+    STATE(s, g_set);
+    STATE(s, g_count);
+    STATE(s, g_cur);
+    STATE(s, g_idle);
+    STATE(s, g_ws_3d_count);
+    STATE(s, g_ws_wide_display);
+}
 
 void ws_configure(float aspect) {
     g_ws_aspect = aspect;
@@ -84,12 +99,11 @@ bool ws_projected(int32_t x, int32_t y) {
 #define WS_HOLD_FRAMES 12
 
 void ws_new_frame(void) {
-    static uint32_t idle;
     if (g_ws_3d_count)
-        idle = 0;
-    else if (idle < WS_HOLD_FRAMES)
-        idle++;
-    g_ws_wide_display = g_ws_enabled && idle < WS_HOLD_FRAMES;
+        g_idle = 0;
+    else if (g_idle < WS_HOLD_FRAMES)
+        g_idle++;
+    g_ws_wide_display = g_ws_enabled && g_idle < WS_HOLD_FRAMES;
     g_ws_3d_count = 0;
     g_cur ^= 1;
     if (g_count[g_cur]) {

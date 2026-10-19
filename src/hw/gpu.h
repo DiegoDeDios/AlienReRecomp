@@ -65,6 +65,8 @@ typedef struct GpuBackend {
     /* make the CPU-visible VRAM copy current for the given rectangle */
     void (*vram_sync)(int x, int y, int w, int h);
     void (*end_frame)(void);
+    /* g_vram was replaced as a whole (save state loaded): take it over */
+    void (*vram_reload)(void);
 } GpuBackend;
 
 extern uint16_t g_vram[VRAM_W * VRAM_H];

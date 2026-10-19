@@ -825,6 +825,15 @@ static void hw_vram_sync(int x, int y, int w, int h) {
     SDL_UnmapGPUTransferBuffer(H.dev, H.dl_tb);
 }
 
+/* a save state replaced g_vram: drop queued drawing and upload all of it
+ * (at native resolution; the game redraws its frame right away) */
+static void hw_vram_reload(void) {
+    H.ndraws = 0;
+    H.nverts = 0;
+    upload_rect(0, 0, VRAM_W, VRAM_H, false);
+    H.dirty = false;
+}
+
 const GpuBackend g_gpu_hw = {
     .name = "hardware",
     .triangle = hw_triangle,
@@ -835,6 +844,7 @@ const GpuBackend g_gpu_hw = {
     .vram_copy = hw_vram_copy,
     .vram_sync = hw_vram_sync,
     .end_frame = NULL,
+    .vram_reload = hw_vram_reload,
 };
 
 /* ------------------------------------------------------------------ */

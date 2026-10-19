@@ -23,6 +23,8 @@ Getting started
 In game: F2 (or Select+Start on a controller) opens the pause menu with
 settings and controls, F11 or Cmd+Ctrl+F toggles fullscreen, F12 saves a
 screenshot.
+F5 quick saves anywhere (one slot, quicksave.state next to the memory
+cards) and F9 returns to that moment.
 
 Files
 -----

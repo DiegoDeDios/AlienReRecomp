@@ -3,6 +3,7 @@
  * regions, BIOS ROM and the cache control register.
  */
 #include "psx.h"
+#include "savestate.h"
 
 uint8_t g_ram[0x200000];
 uint8_t g_scratch[0x400];
@@ -10,6 +11,15 @@ uint8_t g_scratch[0x400];
 static uint32_t g_memctrl[16];
 static uint32_t g_ramsize = 0x00000B88;
 static uint32_t g_cachectrl;
+
+void bus_state(StateIO *s) {
+    state_section(s, "MEM ");
+    STATE(s, g_ram);
+    STATE(s, g_scratch);
+    STATE(s, g_memctrl);
+    STATE(s, g_ramsize);
+    STATE(s, g_cachectrl);
+}
 
 static void unmapped(const char *what, uint32_t addr, uint32_t v) {
     static int count;

@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-#define PORT_VERSION "0.1.3"
+#define PORT_VERSION "0.1.4"
 
 /* Runs the launcher in `win` until the player starts the game (returns
  * true) or quits (false). `cfg` holds the settings for this run and is
@@ -47,7 +47,7 @@ typedef struct OverlayInfo {
     bool running_skip_intro;
 } OverlayInfo;
 
-enum { OVERLAY_OPEN, OVERLAY_RESUME, OVERLAY_QUIT };
+enum { OVERLAY_OPEN, OVERLAY_RESUME, OVERLAY_QUIT, OVERLAY_QUICK_SAVE, OVERLAY_QUICK_LOAD };
 
 bool overlay_open(SDL_Window *win, SDL_GPUDevice *dev, SDL_GPUTextureFormat fmt,
                   Settings *cfg, Settings *saved, const char *path, const OverlayInfo *info);
@@ -55,6 +55,14 @@ void overlay_event(const SDL_Event *e);
 int overlay_update(void);
 void overlay_render(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *target, int w, int h);
 void overlay_close(void);
+
+/* A short message over the running game (quick save / load), shown for a
+ * couple of seconds. Each frame, toast_frame builds it and returns true
+ * while it is visible; toast_render then draws it like overlay_render. */
+void toast_show(SDL_Window *win, SDL_GPUDevice *dev, SDL_GPUTextureFormat fmt, const char *text,
+                bool error);
+bool toast_frame(void);
+void toast_render(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *target, int w, int h);
 
 #ifdef __cplusplus
 }

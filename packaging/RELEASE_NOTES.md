@@ -27,6 +27,7 @@ from your disc image and run by the port's interpreter when you play.
 3. Adjust **Settings** and **Controls** if you like, then **Start game**.
 
 F2 (or Select+Start on a controller) opens settings and controls in game.
+F5 quick saves anywhere and F9 returns to that moment.
 Each package includes a README with details and the third-party licenses.
 
 *Alien Resurrection* belongs to its owners. This is an independent fan

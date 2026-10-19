@@ -3,6 +3,7 @@
  * count; interrupts are scheduled for the next target/overflow crossing.
  */
 #include "psx.h"
+#include "savestate.h"
 
 typedef struct {
     uint32_t mode;
@@ -100,6 +101,11 @@ static void schedule(int n) {
         goal = elapsed - (elapsed % p) + p;
     }
     sched_at(k_ev[n], cycles_for_ticks(n, t->base + goal) + 1);
+}
+
+void timers_state(StateIO *s) {
+    state_section(s, "TIMR");
+    STATE(s, g_t);
 }
 
 void timers_init(void) {

@@ -33,6 +33,7 @@ only fully visible in widescreen.*
   * [Sprint](#sprint)
   * [Enemy damage sliders](#enemy-damage-sliders)
   * [Infinite flashlight](#infinite-flashlight)
+  * [Quick save](#quick-save)
   * [Settings without leaving the game](#settings-without-leaving-the-game)
   * [Smaller changes](#smaller-changes)
 * [Status](#status)
@@ -158,6 +159,32 @@ and then has to recharge while switched off. With **Infinite flashlight**
 | --- | --- |
 | ![The original flashlight has run out](docs/media/flashlight_original.jpg) | ![The infinite flashlight is still on](docs/media/flashlight_infinite.jpg) |
 
+### Quick save
+
+The original only saves at the save stations, and loading one puts you back
+in front of that station. **Quick save** (on by default) adds one slot
+that keeps the exact moment: press **F5** anywhere to save and **F9** to
+return to it, with enemies, doors, items and sounds exactly as they were.
+It works in the title menu too, so a session can pick up where it left off
+right after starting the game. The keys can be changed in **Controls**
+(also for a controller), and the pause menu (F2) has **Quick save** and
+**Quick load** entries. Memory card saves are not touched.
+
+The quick save is a snapshot of the whole emulated PlayStation (about
+4 MB), stored as `quicksave.state` next to the memory cards and
+`config.ini`:
+
+| System | Quick save |
+| --- | --- |
+| macOS | `~/Library/Application Support/AlienResurrectionPort/AlienResurrection/quicksave.state` |
+| Windows | `%APPDATA%\AlienResurrectionPort\AlienResurrection\quicksave.state` |
+| Linux | `~/.local/share/AlienResurrectionPort/AlienResurrection/quicksave.state` (or under `$XDG_DATA_HOME` when set) |
+
+With `--save-dir DIR` it goes to `DIR/quicksave.state` instead. Delete the
+file to start without a quick save; copy it to keep one aside. A quick save
+belongs to the version of the port that made it: after an update, save at a
+station first.
+
 ### Settings without leaving the game
 
 Press **F2** (or hold **Select + Start** on a controller) to pause and open
@@ -196,6 +223,7 @@ applying on the next start. **Quit to desktop** is there too.
 | Responsive controls: direct mouse look, sticks without delay | working |
 | Launcher: disc selection, settings, control rebinding | working |
 | In-game overlay (F2 / Select+Start): settings, controls, quit | working |
+| Quick save / quick load (F5 / F9, save states) | working |
 | Software renderer (reference) | working |
 | FMV (STR/MDEC), XA audio, CD-DA | working (audio needs listening tests) |
 | Memory card saves (`bu00:`): save, load, overwrite | working |
@@ -364,12 +392,14 @@ The launcher opens first:
   your disc. No game data ships with the port.
 * **Settings**: widescreen and aspect ratio, internal resolution,
   precision geometry (PGXP), smooth scaling, vsync, fullscreen, frame rate
-  display, sprint and sprint speed, infinite flashlight, skip intro movies,
+  display, sprint and sprint speed, infinite flashlight, quick save, skip
+  intro movies,
   frame rate boost (emulated CPU speed), and enemy damage (overall and per
   kind of enemy: alien warriors, facehuggers, chestbursters, queen,
   newborn, marines, sentry tank, acid blood).
 * **Controls**: rebind every PlayStation button, the keyboard stick
-  directions, sprint and fast forward, for keyboard/mouse (two keys per
+  directions, sprint, fast forward, quick save and quick load, for
+  keyboard/mouse (two keys per
   action) and controller. The mouse and stick settings are there too: mouse
   look and sensitivity, responsive sticks, stick dead zone, camera stick
   speed and response curve.
@@ -381,7 +411,7 @@ the memory cards (see below).
 
 While playing, **F2** (or holding **Select + Start** on a controller for a
 moment) pauses the game and opens the same Settings and Controls pages over
-it, plus **Quit to desktop**. Changes apply immediately, except internal
+it, plus **Quick save**, **Quick load** and **Quit to desktop**. Changes apply immediately, except internal
 resolution, VSync and skip intro movies, which are marked "applies on next
 start". F2, Esc, Start or Circle/B resumes.
 
@@ -403,7 +433,7 @@ testing):
 | `--enemy-damage PCT`, `--enemy-damage GROUP=PCT` | damage taken from all enemies / one kind (`alien_warriors`, `facehuggers`, `chestbursters`, `queen`, `newborn`, `marines`, `sentry_tank`, `acid_blood`), 0–200, default 100; repeatable |
 | `--fullscreen`, `--show-fps`, `--sharp`, `--mouse-sens N` | as in the launcher |
 | `--original-stick` | both sticks through the game's own input handling (delay, 38% dead zone) |
-| `--save-dir DIR` | folder for memory cards and `config.ini` (default below) |
+| `--save-dir DIR` | folder for memory cards, `config.ini` and the quick save (default below) |
 | `--renderer sw` | use the software rasterizer (pixel-accurate reference) |
 | `--headless --frames N --shot F:file.png` | run without a window, write screenshots (ignores `config.ini`) |
 | `--record F:N:STEP:PREFIX` | write N screenshots, one every STEP frames from frame F, as `PREFIX_0000.png`… |
@@ -414,6 +444,7 @@ testing):
 | `--verify ADDR` | lockstep-check a recompiled function against the interpreter |
 | `--watch ADDR[:LEN]` | log every store into a RAM range (debugging) |
 | `--poke F:ADDR:VALUE[:SIZE]` | write a value (hex; 1, 2 or 4 bytes, default 4) into RAM at frame F (testing) |
+| `--save-state F:PATH`, `--load-state F:PATH` | quick save to / load from PATH at frame F (testing; the frame counter is part of the state, so after a load frame-numbered options continue from the saved frame) |
 | `--trace-bios`, `--log 3` | trace BIOS calls / verbose hardware logging |
 
 The game uses the DualShock "Dual Stick" scheme (left stick moves/strafes,
@@ -437,6 +468,7 @@ changeable in **Controls**):
 | Tab | Select | look hold |
 | V / B (middle click) | L3 / R3 | centre view / quick turn |
 | ` (backtick) | | fast forward |
+| F5 / F9 | | quick save / quick load (added) |
 
 Fixed keys: F2 opens the settings overlay, F11 or Cmd+Ctrl+F toggles
 fullscreen (F11 only on Windows), F12 takes a screenshot (Shift+F12 dumps
@@ -455,7 +487,7 @@ Saves are stored as standard 128 KiB memory card images in
 `~/Library/Application Support/AlienResurrectionPort/AlienResurrection/`
 (Windows: `%APPDATA%\AlienResurrectionPort\AlienResurrection\`; Linux:
 `~/.local/share/AlienResurrectionPort/AlienResurrection/`),
-together with `config.ini`.
+together with `config.ini` and the quick save (`quicksave.state`).
 The game keeps its options (Invert Y, crosshair, vibration…) inside each save
 and restores them from the newest save at startup. Invert Y defaults to off
 in this port (the original defaulted to on).
