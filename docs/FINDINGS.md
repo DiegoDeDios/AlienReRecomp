@@ -175,6 +175,14 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
 
 ## Rendering and timing (gameplay)
 
+* Projection: the 3D screen is 384 × 240 (GTE OFX 192, OFY 120). In game
+  H = 384 + the s16 at `0x800A476E` (always 0; written by `0x8001EEC0` at
+  `0x8001F0A0`, reset by `0x8005BF1C`); the title menu uses H = 240
+  (`0x8001EA94`), start-up code 256 and 1000 (`0x80032D68`). The camera
+  matrices scale the vertical row by 0.8 (aspect correction), giving a 53°
+  horizontal and 43° vertical field of view. The first-person weapon pass
+  is `0x80020848` → `0x80020544` (one model part per entry, drawn through
+  the model renderer's function pointer).
 * Ordering tables: two double-buffered OTs of 4,096 slots at
   `0x800C1D30` and `0x800C5D30`. Slot use observed: menu text and the logo
   banner at 0, menu highlight at 2, HUD at 4, subtitles at 0; particles from

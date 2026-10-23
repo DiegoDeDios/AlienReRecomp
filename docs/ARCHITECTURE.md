@@ -202,6 +202,26 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   polygons the game relies on being discarded do not reappear as stretched
   "explosions".
 
+### Field of view (`src/runtime/native.c`)
+
+In game, the frame's camera setup (`0x8001EEC0`) loads the GTE projection
+distance H = 384 + an s16 offset at `0x800A476E` that the game always
+leaves at 0. The 3D screen is 384 × 240 (OFX 192, OFY 120) and the camera
+matrix scales the vertical axis by 0.8, so the horizontal field of view is
+2·atan(192 / (H·k)) (k = the widescreen scale): 53° at 4:3, 67° at 16:9.
+The **Field of view** setting (degrees across the screen, up to 100; 0 =
+the game's own) is turned into an H and written into that offset by a
+wrapper before the setup runs, so everything the game projects in the
+frame, PGXP included, uses it; menus set their own H and are not affected.
+
+The first-person weapon is drawn by `0x80020848` (through `0x80020544`);
+its wrapper puts the original H back in the GTE for that pass, because the
+weapon models are built for the original framing and show their unfinished
+back at a wider one. Level geometry, characters and decals keep working at
+wide angles (the game culls in screen space); a wider view only changes
+render-side data (ordering tables, packet buffers), not game logic, as far
+as tested.
+
 ### Frame pacing and frame rate
 
 * Presentation uses vsync. When the display runs at ~60 Hz, frames are paced

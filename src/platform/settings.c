@@ -136,6 +136,16 @@ void settings_defaults(Settings *s) {
     settings_default_bindings(s);
 }
 
+double settings_fov_original(const Settings *s, bool software) {
+    double k = 1.0;
+    if (s->widescreen && !software && s->aspect_w > 0 && s->aspect_h > 0) {
+        double aspect = (double)s->aspect_w / s->aspect_h;
+        if (aspect > 4.0 / 3.0 + 0.01)
+            k = (4.0 / 3.0) / aspect;
+    }
+    return fov_original_deg(k);
+}
+
 const char *settings_path(void) {
     static char path[1100];
     if (!path[0])
@@ -310,6 +320,7 @@ bool settings_load(Settings *s, const char *path) {
             else if (!strcmp(k, "smooth")) s->smooth = parse_bool(v);
             else if (!strcmp(k, "fullscreen")) s->fullscreen = parse_bool(v);
             else if (!strcmp(k, "show_fps")) s->show_fps = parse_bool(v);
+            else if (!strcmp(k, "fov")) s->fov = !strcmp(v, "original") ? 0 : clampi(atoi(v), 0, SETTINGS_FOV_MAX);
             else if (!strcmp(k, "gpu_driver") &&
                      (!strcmp(v, "auto") || !strcmp(v, "vulkan") || !strcmp(v, "direct3d12")))
                 snprintf(s->gpu_driver, sizeof s->gpu_driver, "%s", v);
@@ -369,10 +380,15 @@ bool settings_save(const Settings *s, const char *path) {
     const char *tf[2] = {"false", "true"};
     fprintf(f, "# Alien Resurrection native port settings (written by the launcher)\n\n");
     fprintf(f, "[game]\ndisc = %s\nskip_intro = %s\n\n", s->disc, tf[s->skip_intro]);
-    fprintf(f, "[video]\nwidescreen = %s\naspect = %d:%d\ninternal_scale = %d\n"
+    char fov[16];
+    if (s->fov > 0)
+        snprintf(fov, sizeof fov, "%d", s->fov);
+    else
+        snprintf(fov, sizeof fov, "original");
+    fprintf(f, "[video]\nwidescreen = %s\naspect = %d:%d\nfov = %s\ninternal_scale = %d\n"
                "pgxp = %s\nvsync = %s\nsmooth = %s\nfullscreen = %s\nshow_fps = %s\n"
                "gpu_driver = %s\n\n",
-            tf[s->widescreen], s->aspect_w, s->aspect_h, s->internal_scale,
+            tf[s->widescreen], s->aspect_w, s->aspect_h, fov, s->internal_scale,
             tf[s->pgxp], tf[s->vsync], tf[s->smooth], tf[s->fullscreen], tf[s->show_fps],
             s->gpu_driver);
     fprintf(f, "[gameplay]\nsprint = %s\nsprint_speed = %d\ninfinite_flashlight = %s\n"

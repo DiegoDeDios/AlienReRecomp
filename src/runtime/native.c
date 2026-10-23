@@ -10,6 +10,7 @@
 #include "pgxp.h"
 #include "psx.h"
 #include "savestate.h"
+#include "widescreen.h"
 
 /* libetc VSync's wait helper: v_wait(target, n) spins until the vblank
  * counter reaches `target`, giving up after n<<15 loop iterations. That
@@ -380,4 +381,55 @@ void ALIEN_80020350__orig(CPU *c);
 void ALIEN_80020350(CPU *c) {
     mem_w8(OPT_INVERT_Y, 0);
     ALIEN_80020350__orig(c);
+}
+
+/* Field of view. In game the frame's camera setup (0x8001EEC0) sets the
+ * GTE projection distance H to 384 + the s16 at 0x800A476E, an offset the
+ * game itself always leaves at 0 (reset at level start by 0x8005BF1C). The
+ * 3D screen is 384 x 240 pixels (OFX 192, OFY 120) and the camera matrix
+ * scales the vertical axis by 0.8, so the horizontal field of view is
+ * 2 atan(192 / (H k)) -- 53 degrees at 4:3, 67 with the 16:9 widescreen
+ * scale k -- and the vertical one 2 atan(120 / (0.8 H)), 43 degrees. A wider
+ * view is a smaller H: written into that offset before the setup runs, so
+ * everything the game projects in the frame (and PGXP) uses it.
+ *
+ * The first-person weapon (0x80020848, drawn through 0x80020544) is kept at
+ * the original H: the models are built for that framing, and a wider one
+ * shows parts that were always off screen. */
+#define CAMERA_H_OFFSET 0x800A476Eu
+#define CAMERA_H        384.0
+#define SCREEN_HALF_W   192.0
+#define FOV_PI          3.14159265358979323846
+
+int g_fov_deg;
+
+double fov_original_deg(double ws_k) {
+    return 2.0 * atan(SCREEN_HALF_W / (CAMERA_H * ws_k)) * 180.0 / FOV_PI;
+}
+
+static int fov_h_offset(void) {
+    double k = g_ws_k > 0 ? g_ws_k : 1.0;
+    int deg = g_fov_deg > FOV_MAX_DEG ? FOV_MAX_DEG : g_fov_deg;
+    if (deg <= fov_original_deg(k))
+        return 0;
+    double h = SCREEN_HALF_W / (k * tan(deg * FOV_PI / 360.0));
+    return (int)lround(h - CAMERA_H);
+}
+
+void ALIEN_8001EEC0__orig(CPU *c);
+void ALIEN_8001EEC0(CPU *c) {
+    mem_w16(CAMERA_H_OFFSET, (uint16_t)(int16_t)fov_h_offset());
+    ALIEN_8001EEC0__orig(c);
+}
+
+void ALIEN_80020848__orig(CPU *c);
+void ALIEN_80020848(CPU *c) {
+    /* the offset this frame's H was set up with */
+    int32_t off = (int16_t)mem_r16(CAMERA_H_OFFSET);
+    uint32_t h = gte_read_ctrl(c, 26);
+    if (off)
+        gte_write_ctrl(c, 26, (uint32_t)((int32_t)h - off));
+    ALIEN_80020848__orig(c);
+    if (off)
+        gte_write_ctrl(c, 26, h);
 }

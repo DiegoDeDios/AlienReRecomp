@@ -826,6 +826,26 @@ void draw_settings(ImDrawList *dl) {
     }
     ImGui::EndDisabled();
     ImGui::EndDisabled();
+    {
+        /* from the game's own field of view at this aspect ratio up to 100 degrees
+         * (stored as 0 = original, so it follows aspect changes) */
+        float lo = roundf((float)settings_fov_original(c, hw_only));
+        float hi = fmaxf(lo, (float)SETTINGS_FOV_MAX);
+        float v = (float)c->fov > lo ? (float)c->fov : lo;
+        char fmt[32];
+        static char desc[200]; /* shown after this row is drawn (L.desc) */
+        snprintf(fmt, sizeof fmt, v <= lo ? "Original (%%.0f\xc2\xb0)" : "%%.0f\xc2\xb0");
+        snprintf(desc, sizeof desc,
+                 "How much of the scene you see across the screen. The game's own is %.0f\xc2\xb0 "
+                 "at this aspect ratio. The weapon keeps its original framing. Added by this port.",
+                 (double)lo);
+        ImGui::BeginDisabled(hi <= lo);
+        if (slider("Field of view", &v, lo, hi, 1.0f, fmt, desc)) {
+            c->fov = v <= lo ? 0 : (int)v;
+            mark(&c->fov);
+        }
+        ImGui::EndDisabled();
+    }
     static const char *const scales[] = {"1x (240p)", "2x (480p)", "3x (720p)", "4x (960p)",
                                          "5x (1200p)", "6x (1440p)", "7x (1680p)", "8x (1920p)"};
     int si = c->internal_scale - 1;
