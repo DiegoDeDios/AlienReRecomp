@@ -75,8 +75,9 @@ The PlayStation rounds every vertex to a whole pixel and maps textures
 without perspective correction, which makes polygons jitter and textures
 warp as the camera moves. **Precision geometry** (in the spirit of PGXP)
 keeps the full precision of every projected vertex and its depth, so
-geometry stays still and textures stay straight. It can be switched off for
-the original look.
+geometry stays still and textures stay straight. Walls that reach past the
+camera, which the original draws smeared and bent at the edge of the
+screen, are clipped properly. It can be switched off for the original look.
 
 ### Steady 60 fps
 

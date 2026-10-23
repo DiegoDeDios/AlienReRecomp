@@ -246,7 +246,10 @@ vertex and lets the renderer use it:
 * **GTE**: every `RTPS`/`RTPT` also computes the projected position in
   floating point (same formula as the fixed-point unit, including the
   widescreen scale) plus the depth, and pushes it onto a shadow copy of the
-  `SXY` FIFO.
+  `SXY` FIFO. It is kept in homogeneous form (x·z, y·z, z), so it stays
+  exact where the hardware result is garbage: vertices far off-screen
+  (`SXY` saturate at ±1024) and at or behind the camera (z ≤ 0, where the
+  divider overflows and the vertex is clamped to the edge of the range).
 * **Tracking**: the recompiler emits hooks for the instructions that move
   vertices around — `MFC2`/`MTC2`/`SWC2`/`LWC2`, `LW`/`SW` and register
   moves — so the shadow follows the value through registers, RAM and the
@@ -259,10 +262,25 @@ vertex and lets the renderer use it:
   perspective correction (the vertex shader outputs `w` = depth). The
   1024-pixel span rejection is skipped for them, since their coordinates
   are exact rather than wrapped.
+* **Near-plane clipping**: the game has no near clipping. A wall that
+  reaches past the camera (typically at the screen edge, more so with a
+  wide field of view) has corners clamped to garbage positions, and the
+  PS1 draws it smeared and bent, or the GPU's span limit drops it. When all
+  three vertices of such a triangle are tracked, the renderer clips it at
+  depth 1 in homogeneous space (texture coordinates and colours
+  interpolated linearly in 3D) and draws the visible part as an exact,
+  perspective-correct projection.
+* **Back-face culling**: `NCLIP` on clamped coordinates can get the
+  winding wrong, culling a visible near-camera polygon or keeping a back
+  face. When a vertex is clamped, its sign comes from the homogeneous
+  positions instead (`det[x y w]`, which keeps the true orientation as
+  seen from the eye even with vertices behind it); other cases keep the
+  hardware result.
 * **Subdivision**: the hand-written renderer splits big near-camera quads
   into up to 4×4 pieces in screen space (`0x800A81BC`) to hide affine
-  warping. With precise corners that is unnecessary and the averaged
-  midpoints would lose precision, so the native wrapper asks for level 0.
+  warping. With tracked corners that is unnecessary, and the midpoints
+  (averages of clamped positions near the camera) would be garbage, so the
+  native wrapper asks for level 0 and the renderer clips the whole quad.
 
 The shadow lookups cost about 0.25 ms per frame. `--no-pgxp` disables the
 feature; the software renderer always draws the original way.

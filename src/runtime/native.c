@@ -51,19 +51,21 @@ void ALIEN_80082AD4(CPU *c) {
  * into up to 4x4 smaller quads by averaging corner positions/UVs in screen
  * space (a2 = levels), which hides affine texture warping on the PS1. With
  * PGXP the original quad is rendered with perspective-correct texturing,
- * which is exact, so when all four corners carry precise data we ask for
- * level 0 (the routine then emits the quad unchanged). */
+ * which is exact, so when all four corners are tracked projections we ask
+ * for level 0 (the routine then emits the quad unchanged). That includes
+ * corners at or behind the camera: the averaged midpoints of their clamped
+ * positions would be garbage, while the renderer clips the whole quad. */
 void ALIEN_800A81BC__orig(CPU *c);
 void ALIEN_800A81BC(CPU *c) {
     if (g_pgxp && (int32_t)c->r[6] > 0) {
         static const uint32_t corner[4] = {8, 20, 32, 44};
         uint32_t pkt = c->r[4];
-        bool precise = true;
-        for (int i = 0; i < 4 && precise; i++) {
+        bool tracked = true;
+        for (int i = 0; i < 4 && tracked; i++) {
             PgxpVtx v;
-            precise = pgxp_lookup(pkt + corner[i], mem_r32(pkt + corner[i]), &v);
+            tracked = pgxp_lookup(pkt + corner[i], mem_r32(pkt + corner[i]), &v);
         }
-        if (precise)
+        if (tracked)
             c->r[6] = 0;
     }
     ALIEN_800A81BC__orig(c);

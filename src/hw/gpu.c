@@ -215,14 +215,21 @@ static void draw_polygon(const uint32_t *w) {
             unpack_color(w[i++], &v[k]);
         else
             v[k].r = v[0].r, v[k].g = v[0].g, v[k].b = v[0].b;
-        v[k].precise = false;
+        v[k].precise = v[k].tracked = false;
         if (g_pgxp) {
             PgxpVtx p;
             if (pgxp_lookup(g_fifo_addr[i], w[i], &p)) {
-                v[k].precise = true;
-                v[k].fx = p.x + (float)S.off_x;
-                v[k].fy = p.y + (float)S.off_y;
-                v[k].fz = p.z;
+                float ox = (float)S.off_x, oy = (float)S.off_y, sx, sy;
+                v[k].tracked = true;
+                v[k].hx = p.x + ox * p.w;
+                v[k].hy = p.y + oy * p.w;
+                v[k].hw = p.w;
+                if (pgxp_screen(&p, &sx, &sy)) {
+                    v[k].precise = true;
+                    v[k].fx = sx + ox;
+                    v[k].fy = sy + oy;
+                    v[k].fz = p.w;
+                }
             }
         }
         unpack_xy(w[i++], &v[k]);
@@ -245,10 +252,10 @@ static void draw_polygon(const uint32_t *w) {
     if (tex && S.tex_disable)
         flags &= ~(uint32_t)(PRIM_TEXTURED | PRIM_RAW);
     if (g_ws_enabled) {
-        bool any_precise = false;
+        bool any_tracked = false;
         for (int k = 0; k < nv; k++)
-            any_precise |= v[k].precise;
-        if (any_precise) {
+            any_tracked |= v[k].tracked;
+        if (any_tracked) {
             g_ws_3d_count++; /* tracked GTE projection: certainly 3D */
         } else {
             int32_t xs[4], ys[4];
