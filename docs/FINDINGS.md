@@ -132,6 +132,13 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   frame's output has been read; the MDEC must behave like a FIFO.
 * The CD controller is expected to come up with all interrupt sources enabled
   (the real BIOS leaves it that way), libcd never writes the enable register.
+* **SPU envelopes and voice reuse**: the sound code (`0x800285C8`, envelope
+  read through `0x80027C58` → libspu `SpuGetVoiceEnvelope`) only reuses a
+  voice once its ADSR level is 0. Looping sounds such as the flamethrower's
+  (samples at SPU `0x2D7F0` / `0x2FDB0` in level 5) are keyed off with
+  release rates 7 and 8, so the release must run at the hardware's speed
+  (shift = the register's 5-bit rate; decay likewise its 4-bit rate) or
+  every burst strands two voices until enemies and weapons fall silent.
 * **SPU IRQ from the transfer address**: the speech streamer (below) needs
   the SPU IRQ to fire when the IRQ address equals the RAM transfer address
   while no transfer runs, as the hardware compares them continuously.
