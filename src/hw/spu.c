@@ -154,6 +154,15 @@ static void decode_block(Voice *v) {
 
 /* ADSR ------------------------------------------------------------- */
 
+/* Each phase has a shift (0..31, fast..slow) and a step: the level changes
+ * by step << max(0, 11 - shift) every 1 << max(0, shift - 11) samples
+ * (exponential decrease scales it by the level). Decay and release have a
+ * fixed step of -8 and take their shift straight from the register: 4 bits
+ * for decay, 5 for release. (libspu and the hardware docs write these as
+ * "rate << 2", meaning shift << 2 with step index 0, not a shift four times
+ * as large: that made releases last minutes, and the game, which reuses a
+ * voice only once its envelope reaches 0, ran out of voices after a few
+ * flamethrower bursts.) */
 static void adsr_step(Voice *v) {
     if (v->phase == ADSR_OFF) {
         v->adsr_level = 0;
@@ -176,7 +185,7 @@ static void adsr_step(Voice *v) {
     case ADSR_DECAY:
         exp_mode = true;
         decrease = true;
-        shift = ((lo >> 4) & 0xF) << 2;
+        shift = (lo >> 4) & 0xF;
         step = -8;
         break;
     case ADSR_SUSTAIN:
@@ -188,7 +197,7 @@ static void adsr_step(Voice *v) {
     default: /* release */
         exp_mode = (hi >> 5) & 1;
         decrease = true;
-        shift = (hi & 0x1F) << 2;
+        shift = hi & 0x1F;
         step = -8;
         break;
     }
