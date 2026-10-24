@@ -1,0 +1,162 @@
+# Pre-releases: test builds of a feature branch, published before its pull
+# request is merged.
+#
+# Run it on the branch: Actions > Pre-release > Run workflow, "Use workflow
+# from" the branch (or `gh workflow run pre-release.yml --ref BRANCH`). The
+# branch must contain main (merge main into it first; its pull request needs
+# that anyway) and raise PORT_VERSION above main's to a version that is not
+# released yet (tools/check_version_bump.sh), so a pre-release previews the
+# version its pull request will release.
+#
+# It builds the branch's head like release.yml, with the version marked
+# <PORT_VERSION>-pre (package names, launcher, quick saves), tags that commit
+# v<PORT_VERSION>-pre and publishes the GitHub pre-release
+# "ARR v<PORT_VERSION>-pre" with the three packages, the branch's commits and
+# packaging/RELEASE_NOTES.md. Running it again for the same version replaces
+# that pre-release and moves its tag to the branch's new head. The release
+# of the merged version (v<PORT_VERSION>, by release.yml) is not affected.
+name: Pre-release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# one pre-release at a time per branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # main and the existing tags
+      - name: Feature branch with a new version
+        id: v
+        run: |
+          if [ "$GITHUB_REF_TYPE" != branch ] || [ "$GITHUB_REF_NAME" = main ]; then
+            echo "::error::run this on a feature branch (main is released by release.yml)"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo "::error::$GITHUB_REF_NAME does not contain main: merge main into it first"
+            exit 1
+          fi
+          tools/check_version_bump.sh origin/main
+          version=$(sed -n 's/^#define PORT_VERSION "\(.*\)"/\1/p' src/platform/launcher.h)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Pre-release v$version-pre from $GITHUB_REF_NAME at $GITHUB_SHA"
+
+  # the builds are release.yml's, plus the -pre version mark
+
+  macos:
+    name: Build (macOS)
+    needs: version
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7
+      - name: Mark the version as a pre-release
+        run: |
+          perl -pi -e 's/^(#define PORT_VERSION "[^"]+)"/$1-pre"/' src/platform/launcher.h
+          grep '^#define PORT_VERSION ".*-pre"' src/platform/launcher.h
+      - name: Tools
+        run: brew install ninja
+      - name: Build AlienResurrection.app (universal)
+        run: tools/build_macos_app.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos
+          path: build-mac/release/*.zip
+          retention-days: 14
+
+  windows:
+    name: Build (Windows)
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Mark the version as a pre-release
+        run: |
+          perl -pi -e 's/^(#define PORT_VERSION "[^"]+)"/$1-pre"/' src/platform/launcher.h
+          grep '^#define PORT_VERSION ".*-pre"' src/platform/launcher.h
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 cmake ninja-build zip
+      - name: Build AlienResurrection.exe (cross-compiled)
+        run: tools/build_windows.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: build-win/release/*.zip
+          retention-days: 14
+
+  linux:
+    name: Build (Linux)
+    needs: version
+    runs-on: ubuntu-24.04
+    # Ubuntu 22.04 (glibc 2.35) so the program also runs on older systems
+    container: ubuntu:22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Mark the version as a pre-release
+        run: |
+          perl -pi -e 's/^(#define PORT_VERSION "[^"]+)"/$1-pre"/' src/platform/launcher.h
+          grep '^#define PORT_VERSION ".*-pre"' src/platform/launcher.h
+      - name: Tools and SDL3 build dependencies
+        run: sh tools/linux/install_deps_ubuntu.sh
+      - name: Build AlienResurrection (x86_64)
+        run: sh tools/build_linux.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: build-linux-x86_64/release/*.tar.gz
+          retention-days: 14
+
+  pre-release:
+    name: Pre-release
+    needs: [version, macos, windows, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # the tag and the pre-release
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # main and the existing tags
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+      - name: Notes
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          {
+            echo "**Pre-release for testing:** branch \`$GITHUB_REF_NAME\` at ${GITHUB_SHA:0:7}, ahead of the v$VERSION release. It may still change before that release, and its quick saves do not carry over to it."
+            echo
+            echo "## Changes since the last release"
+            echo
+            git log --no-merges --format='* %s (%h)' origin/main..HEAD
+            echo
+            cat packaging/RELEASE_NOTES.md
+          } > "$RUNNER_TEMP/notes.md"
+      - name: Tag and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.version.outputs.version }}-pre
+        run: |
+          # an earlier pre-release of this version is replaced
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release delete "$TAG" --yes
+          fi
+          # pushed with the workflow's token, so it starts no workflow
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              tag -f -a "$TAG" -m "ARR $TAG" "$GITHUB_SHA"
+          git push --force origin "refs/tags/$TAG"
+          gh release create "$TAG" --verify-tag --prerelease --latest=false \
+            --title "ARR $TAG" --notes-file "$RUNNER_TEMP/notes.md" \
+            dist/macos/*.zip dist/windows/*.zip dist/linux/*.tar.gz

@@ -317,6 +317,19 @@ and Linux packages, `packaging/RELEASE_NOTES.md` and the list of pull
 requests since the last release. Review the draft and publish it by hand.
 Pushing a `v*` tag by hand still works too (it must match `PORT_VERSION`).
 
+**Pre-releases** let people try a feature branch before its pull request
+is merged. Run **Pre-release** (`.github/workflows/pre-release.yml`) on the
+branch: *Actions > Pre-release > Run workflow* with *Use workflow from* set
+to the branch, or `gh workflow run pre-release.yml --ref <branch>`. The
+branch must contain `main` (merge `main` into it first) and raise
+`PORT_VERSION` to a version not released yet. The workflow builds the
+branch's head with the version marked `<version>-pre` (package names,
+launcher, quick saves), tags it `v<version>-pre` and publishes the GitHub
+pre-release **ARR v<version>-pre** with the packages and the branch's
+commits. Running it again replaces that pre-release and moves the tag to
+the branch's new head; the release of the merged pull request is not
+affected.
+
 ```bash
 tools/build_macos_app.sh
 ```
