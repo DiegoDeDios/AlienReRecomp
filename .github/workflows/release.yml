@@ -17,6 +17,7 @@
 # packages, the notes from packaging/RELEASE_NOTES.md and the pull requests
 # since the last release; review and publish it by hand. Pushing a v* tag
 # by hand does the same for that commit (the tag must match PORT_VERSION).
+# Pre-releases of feature branches (v*-pre tags) are made by pre-release.yml.
 name: Build and release
 
 on:
@@ -25,7 +26,7 @@ on:
     branches: [main]
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ["v*", "!v*-pre"]
 
 permissions:
   contents: read
