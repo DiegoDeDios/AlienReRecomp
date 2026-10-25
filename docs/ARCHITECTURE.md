@@ -215,6 +215,10 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   listed in `tools/overrides_*.txt`): it fast-forwards emulated time to the
   next event instead of spinning, so its iteration-count timeout cannot fire
   at higher CPU speeds.
+* While a level section loads in the background (from the trigger until the
+  player walks into the new section) the game caps itself at 20 fps with
+  `VSync(3)`. The `VSync` wrapper turns that call into a counter read, so
+  the frame rate stays at 60.
 
 ### Precision geometry (PGXP, `src/runtime/pgxp.c`)
 
