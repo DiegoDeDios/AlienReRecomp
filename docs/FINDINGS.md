@@ -202,6 +202,14 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   computes vblanks elapsed since the previous frame, clamps it to 1..8 and
   stores it at `gp+0x4130` for the game logic (`gp+0x4134` holds the last
   counter). Demo playback (`0x800A48C4` set) uses recorded steps instead.
+  While the word at `0x800A4A14` is non-zero it first calls `VSync(3)`,
+  capping the game at 20 fps.
+* Level sections: a trigger (e.g. a terminal by a door) starts
+  loading the next section in the background through a state machine at
+  `0x80075A78` on `0x800A4A14`: 1 starts the load (`0x80081D8C`, section
+  byte `0x800A4613`), 2 polls it (`0x8002DB0C(1)`) and −1 waits until the
+  player is in the new section (player `+0x146`), then 0. The 20 fps cap
+  holds through all of it.
 * At original CPU speed the attract demo's combat scenes run at 20–30 fps;
   at 300% they hold 60 fps.
 * libetc `VSync` wait helper: `0x80082C4C` in `ALIEN.BIN` (vblank counter at

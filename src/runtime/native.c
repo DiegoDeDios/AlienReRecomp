@@ -37,12 +37,21 @@ static void vsync_wait(CPU *c, uint32_t vcount_addr) {
 void ALIEN_80082C4C(CPU *c) { vsync_wait(c, 0x8009D240u); }
 void SLUS_800163D4(CPU *c) { vsync_wait(c, 0x8001F6C8u); }
 
+/* return address (physical: the interpreter runs the game from KUSEG) of
+ * the frame routine's VSync(3), its 20 fps cap while a level section loads
+ * (flag at 0x800A4A14, see FINDINGS.md) */
+#define SECTION_LOAD_CAP_RA 0x0001FC40u
+
 /* libetc VSync(mode): the menus wait in it and gameplay polls it with -1
  * every frame, so its entry is where save states are taken and restored
- * (savestate.c) */
+ * (savestate.c). The section-load cap went unnoticed at the PS1's 20-30
+ * fps but drops the port from 60 to 20 fps until the player walks into the
+ * new section; the load does not need it, so the counter is read instead. */
 void ALIEN_80082AD4__orig(CPU *c);
 void ALIEN_80082AD4(CPU *c) {
     state_safe_point(c);
+    if ((c->r[31] & 0x1FFFFFFFu) == SECTION_LOAD_CAP_RA && (int32_t)c->r[4] == 3)
+        c->r[4] = (uint32_t)-1;
     ALIEN_80082AD4__orig(c);
 }
 
