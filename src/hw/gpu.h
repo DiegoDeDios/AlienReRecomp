@@ -33,9 +33,14 @@ typedef struct GVtx {
     uint8_t r, g, b;
     uint8_t u, v;
     /* PGXP: precise position (VRAM coordinates, drawing offset applied)
-     * and depth, when the vertex is a tracked GTE projection */
+     * and depth, when the vertex is a tracked GTE projection in front of
+     * the camera */
     bool precise;
     float fx, fy, fz;
+    /* PGXP: any tracked GTE projection, also at or behind the camera:
+     * homogeneous VRAM position (hx / hw, hy / hw), hw = depth */
+    bool tracked;
+    float hx, hy, hw;
 } GVtx;
 
 enum {

@@ -9,3 +9,5 @@
 800519d0 wrap  # apply damage to an object (acid damage to the player)
 8005ecbc wrap  # player update (camera: mouse look and right stick)
 80032530 wrap  # build the gameplay command block (movement stick)
+8001eec0 wrap  # per-frame camera setup: projection distance (field of view)
+80020848 wrap  # first-person weapon pass (keeps the original projection)

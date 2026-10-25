@@ -236,6 +236,10 @@ void pad_get_sticks(int port, uint8_t *rx, uint8_t *ry, uint8_t *lx, uint8_t *ly
 extern bool g_sprint;      /* sprint input held this frame */
 extern int g_sprint_pct;   /* player movement speed while sprinting, percent */
 extern bool g_infinite_flashlight; /* flashlight battery never runs down */
+extern int g_fov_deg;      /* horizontal field of view on screen, degrees (0 = original) */
+#define FOV_MAX_DEG 100
+/* the game's own horizontal field of view for a widescreen scale (g_ws_k) */
+double fov_original_deg(double ws_k);
 
 /* ---- platform (frontend) ---- */
 void platform_vblank(void);   /* present + input + pacing, called each vblank */

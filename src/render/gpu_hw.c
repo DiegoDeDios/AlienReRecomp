@@ -21,9 +21,11 @@
  * texels, then texels with the STP bit), as on the PS1 only STP texels
  * blend.
  */
+#include <math.h>
 #include <stdlib.h>
 
 #include "../hw/gpu.h"
+#include "../runtime/pgxp.h"
 #include "../runtime/psx.h"
 #include "../runtime/widescreen.h"
 #include "render.h"
@@ -453,13 +455,16 @@ static void emit(const HwVertex *v, int n, uint32_t flags, uint16_t tpage,
                  const GpuState *s) {
     if (H.nverts + (uint32_t)n * 2 > MAX_VERTS)
         flush_draws();
-    int x1 = 4096, y1 = 4096, x2 = -4096, y2 = -4096;
+    /* bounding box; clipped near-camera geometry can lie far outside VRAM */
+    float fx1 = 4096.0f, fy1 = 4096.0f, fx2 = -4096.0f, fy2 = -4096.0f;
     for (int i = 0; i < n; i++) {
-        if (v[i].x < x1) x1 = (int)v[i].x;
-        if (v[i].y < y1) y1 = (int)v[i].y;
-        if (v[i].x > x2) x2 = (int)v[i].x + 1;
-        if (v[i].y > y2) y2 = (int)v[i].y + 1;
+        fx1 = fminf(fx1, v[i].x);
+        fy1 = fminf(fy1, v[i].y);
+        fx2 = fmaxf(fx2, v[i].x);
+        fy2 = fmaxf(fy2, v[i].y);
     }
+    int x1 = (int)fmaxf(fx1, -4096.0f), y1 = (int)fmaxf(fy1, -4096.0f);
+    int x2 = (int)fminf(fx2, 4096.0f) + 1, y2 = (int)fminf(fy2, 4096.0f) + 1;
     if (x1 < s->area_x1) x1 = s->area_x1;
     if (y1 < s->area_y1) y1 = s->area_y1;
     if (x2 > s->area_x2) x2 = s->area_x2;
@@ -520,15 +525,107 @@ static inline int span_limit_x(uint32_t flags) {
     return 1024;
 }
 
+/* PGXP: perspective depth for the vertex shader (any positive scale
+ * works; keep w around 1..256) */
+static inline float persp_w(float depth) {
+    return depth * (1.0f / 64.0f) + 0.001f;
+}
+
+/* A vertex of a triangle being clipped: homogeneous position and the
+ * attributes, all of which vary linearly in 3D. */
+typedef struct {
+    float x, y, w;
+    float u, v, r, g, b;
+} ClipVtx;
+
+static ClipVtx clip_lerp(const ClipVtx *a, const ClipVtx *b, float t) {
+    ClipVtx o;
+    o.x = a->x + (b->x - a->x) * t;
+    o.y = a->y + (b->y - a->y) * t;
+    o.w = a->w + (b->w - a->w) * t;
+    o.u = a->u + (b->u - a->u) * t;
+    o.v = a->v + (b->v - a->v) * t;
+    o.r = a->r + (b->r - a->r) * t;
+    o.g = a->g + (b->g - a->g) * t;
+    o.b = a->b + (b->b - a->b) * t;
+    return o;
+}
+
+/* Sutherland-Hodgman against the near plane w = PGXP_NEAR: a triangle
+ * becomes nothing, a triangle or a quad. */
+static int clip_near(const ClipVtx in[3], ClipVtx out[4]) {
+    int n = 0;
+    for (int i = 0; i < 3; i++) {
+        const ClipVtx *a = &in[i], *b = &in[(i + 1) % 3];
+        bool ain = a->w >= PGXP_NEAR, bin = b->w >= PGXP_NEAR;
+        if (ain)
+            out[n++] = *a;
+        if (ain != bin) {
+            out[n] = clip_lerp(a, b, (PGXP_NEAR - a->w) / (b->w - a->w));
+            out[n++].w = PGXP_NEAR;
+        }
+    }
+    return n;
+}
+
+static inline uint8_t clip_color(float c) {
+    return (uint8_t)(c < 0.0f ? 0 : c > 255.0f ? 255 : (int)(c + 0.5f));
+}
+
+/* A triangle whose vertices are all tracked GTE projections, at least one
+ * of them at or behind the near plane or far off-screen. The GTE clamps
+ * such vertices, so the PS1 (and the integer path below) draws them at
+ * garbage positions with affine texturing: near walls at the screen edge
+ * smear and bend. Clipped in homogeneous space, the visible part is an
+ * exact projection, drawn with perspective-correct texturing. */
+static void hw_triangle_clipped(const GpuState *s, const GVtx v[3],
+                                uint32_t flags, uint16_t clut, uint16_t tpage,
+                                uint32_t info0, uint32_t tw) {
+    bool shaded = flags & PRIM_SHADED;
+    ClipVtx in[3], out[4];
+    for (int i = 0; i < 3; i++) {
+        const GVtx *c = shaded ? &v[i] : &v[0];
+        in[i] = (ClipVtx){v[i].hx, v[i].hy, v[i].hw, (float)v[i].u, (float)v[i].v,
+                          (float)c->r, (float)c->g, (float)c->b};
+    }
+    int n = clip_near(in, out);
+    if (n < 3)
+        return;
+    HwVertex hv[6];
+    int m = 0;
+    for (int k = 1; k + 1 < n; k++) {
+        const int idx[3] = {0, k, k + 1};
+        for (int j = 0; j < 3; j++) {
+            const ClipVtx *c = &out[idx[j]];
+            HwVertex *o = &hv[m++];
+            o->x = c->x / c->w + 0.5f;
+            o->y = c->y / c->w + 0.5f;
+            o->w = persp_w(c->w);
+            o->r = clip_color(c->r);
+            o->g = clip_color(c->g);
+            o->b = clip_color(c->b);
+            o->a = 255;
+            o->u = c->u;
+            o->v = c->v;
+            o->info[0] = info0;
+            o->info[1] = clut;
+            o->info[2] = tw;
+            o->info[3] = 0;
+        }
+    }
+    emit(hv, m, flags, tpage, s);
+}
+
 static void hw_triangle(const GpuState *s, const GVtx v[3], uint32_t flags,
                         uint16_t clut, uint16_t tpage) {
     int lim = span_limit_x(flags);
     /* The PS1 rejects oversized triangles; that also discards garbage from
-     * vertices behind the camera. Triangles whose vertices are all precise
-     * (PGXP) are genuine projections in front of the camera and are drawn
-     * whole, with the GPU clipping them to the screen. */
+     * vertices behind the camera. Triangles whose vertices are all tracked
+     * projections (PGXP) are exact and are drawn whole (clipped at the near
+     * plane), with the GPU clipping them to the screen. */
     bool all_precise = v[0].precise && v[1].precise && v[2].precise;
-    for (int i = 0; i < 3 && !all_precise; i++) {
+    bool all_tracked = v[0].tracked && v[1].tracked && v[2].tracked;
+    for (int i = 0; i < 3 && !all_tracked; i++) {
         int j = (i + 1) % 3;
         if (abs(v[i].x - v[j].x) >= lim || abs(v[i].y - v[j].y) >= 512) {
             static unsigned long n;
@@ -550,14 +647,16 @@ static void hw_triangle(const GpuState *s, const GVtx v[3], uint32_t flags,
     }
     uint32_t info0 = make_info0(tpage, flags, s);
     uint32_t tw = texwin(s);
+    if (all_tracked && !all_precise) {
+        hw_triangle_clipped(s, v, flags, clut, tpage, info0, tw);
+        return;
+    }
     HwVertex hv[3];
-    bool persp = v[0].precise && v[1].precise && v[2].precise;
     for (int i = 0; i < 3; i++) {
         set_vertex(&hv[i], &v[i], info0, clut, tw, flags & PRIM_SHADED, &v[0]);
         hv[i].x = ws_x(s, flags, hv[i].x);
-        /* any positive scale works; keep w around 1..256 */
-        if (persp)
-            hv[i].w = v[i].fz * (1.0f / 64.0f) + 0.001f;
+        if (all_precise)
+            hv[i].w = persp_w(v[i].fz);
     }
     emit(hv, 3, flags, tpage, s);
 }

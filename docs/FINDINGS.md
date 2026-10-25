@@ -175,12 +175,29 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
 
 ## Rendering and timing (gameplay)
 
+* Projection: the 3D screen is 384 × 240 (GTE OFX 192, OFY 120). In game
+  H = 384 + the s16 at `0x800A476E` (always 0; written by `0x8001EEC0` at
+  `0x8001F0A0`, reset by `0x8005BF1C`); the title menu uses H = 240
+  (`0x8001EA94`), start-up code 256 and 1000 (`0x80032D68`). The camera
+  matrices scale the vertical row by 0.8 (aspect correction), giving a 53°
+  horizontal and 43° vertical field of view. The first-person weapon pass
+  is `0x80020848` → `0x80020544` (one model part per entry, drawn through
+  the model renderer's function pointer).
 * Ordering tables: two double-buffered OTs of 4,096 slots at
   `0x800C1D30` and `0x800C5D30`. Slot use observed: menu text and the logo
   banner at 0, menu highlight at 2, HUD at 4, subtitles at 0; particles from
   ~80, world geometry from ~188 onwards.
-* Near-camera polygons have screen coordinates that are not direct GTE
-  outputs (clipped or subdivided in screen space by the assembly renderer).
+* Near-camera polygons: the world renderer (e.g. the textured-quad loop at
+  `0x800A5F84`) projects the four corners (RTPT + RTPS) and drops the quad
+  when NCLIP says it faces away (bit 31 of the packet's third source word
+  enables culling, bit 30 flips the winding), when all corners lie past the
+  same screen edge, or when its depth key, max SZ / 2, is below 256 (the
+  whole quad nearer than 512 — presumably the black holes seen when facing
+  a wall up close) or above 12288. Below 2816 it is subdivided in screen
+  space by `0x800A81BC` (2 levels below 1792, else 1). There is no
+  near-plane clipping: a corner behind the camera gets SZ = 0 and an SXY
+  clamped to the edge of the GTE's range, so such a quad's screen
+  coordinates, its subdivided midpoints and its NCLIP winding are garbage.
 * Frame step: the per-frame routine at `0x8001FBE0` reads `VSync(-1)`,
   computes vblanks elapsed since the previous frame, clamps it to 1..8 and
   stores it at `gp+0x4130` for the game logic (`gp+0x4134` holds the last

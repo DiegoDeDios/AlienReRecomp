@@ -202,6 +202,26 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   polygons the game relies on being discarded do not reappear as stretched
   "explosions".
 
+### Field of view (`src/runtime/native.c`)
+
+In game, the frame's camera setup (`0x8001EEC0`) loads the GTE projection
+distance H = 384 + an s16 offset at `0x800A476E` that the game always
+leaves at 0. The 3D screen is 384 × 240 (OFX 192, OFY 120) and the camera
+matrix scales the vertical axis by 0.8, so the horizontal field of view is
+2·atan(192 / (H·k)) (k = the widescreen scale): 53° at 4:3, 67° at 16:9.
+The **Field of view** setting (degrees across the screen, up to 100; 0 =
+the game's own) is turned into an H and written into that offset by a
+wrapper before the setup runs, so everything the game projects in the
+frame, PGXP included, uses it; menus set their own H and are not affected.
+
+The first-person weapon is drawn by `0x80020848` (through `0x80020544`);
+its wrapper puts the original H back in the GTE for that pass, because the
+weapon models are built for the original framing and show their unfinished
+back at a wider one. Level geometry, characters and decals keep working at
+wide angles (the game culls in screen space); a wider view only changes
+render-side data (ordering tables, packet buffers), not game logic, as far
+as tested.
+
 ### Frame pacing and frame rate
 
 * Presentation uses vsync. When the display runs at ~60 Hz, frames are paced
@@ -226,7 +246,10 @@ vertex and lets the renderer use it:
 * **GTE**: every `RTPS`/`RTPT` also computes the projected position in
   floating point (same formula as the fixed-point unit, including the
   widescreen scale) plus the depth, and pushes it onto a shadow copy of the
-  `SXY` FIFO.
+  `SXY` FIFO. It is kept in homogeneous form (x·z, y·z, z), so it stays
+  exact where the hardware result is garbage: vertices far off-screen
+  (`SXY` saturate at ±1024) and at or behind the camera (z ≤ 0, where the
+  divider overflows and the vertex is clamped to the edge of the range).
 * **Tracking**: the recompiler emits hooks for the instructions that move
   vertices around — `MFC2`/`MTC2`/`SWC2`/`LWC2`, `LW`/`SW` and register
   moves — so the shadow follows the value through registers, RAM and the
@@ -239,10 +262,25 @@ vertex and lets the renderer use it:
   perspective correction (the vertex shader outputs `w` = depth). The
   1024-pixel span rejection is skipped for them, since their coordinates
   are exact rather than wrapped.
+* **Near-plane clipping**: the game has no near clipping. A wall that
+  reaches past the camera (typically at the screen edge, more so with a
+  wide field of view) has corners clamped to garbage positions, and the
+  PS1 draws it smeared and bent, or the GPU's span limit drops it. When all
+  three vertices of such a triangle are tracked, the renderer clips it at
+  depth 1 in homogeneous space (texture coordinates and colours
+  interpolated linearly in 3D) and draws the visible part as an exact,
+  perspective-correct projection.
+* **Back-face culling**: `NCLIP` on clamped coordinates can get the
+  winding wrong, culling a visible near-camera polygon or keeping a back
+  face. When a vertex is clamped, its sign comes from the homogeneous
+  positions instead (`det[x y w]`, which keeps the true orientation as
+  seen from the eye even with vertices behind it); other cases keep the
+  hardware result.
 * **Subdivision**: the hand-written renderer splits big near-camera quads
   into up to 4×4 pieces in screen space (`0x800A81BC`) to hide affine
-  warping. With precise corners that is unnecessary and the averaged
-  midpoints would lose precision, so the native wrapper asks for level 0.
+  warping. With tracked corners that is unnecessary, and the midpoints
+  (averages of clamped positions near the camera) would be garbage, so the
+  native wrapper asks for level 0 and the renderer clips the whole quad.
 
 The shadow lookups cost about 0.25 ms per frame. `--no-pgxp` disables the
 feature; the software renderer always draws the original way.
