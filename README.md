@@ -1,18 +1,32 @@
-# Alien Resurrection (PS1) — native port
+<div align="center">
 
-A native macOS, Windows and Linux port of *Alien Resurrection* (PlayStation, USA release
-SLUS-00633), built by **statically recompiling** the original game code from
-MIPS to C. It is not an emulator: the game runs as a native program on a
-small runtime that stands in for the PlayStation's BIOS and hardware, drawn
-by a modern GPU renderer at high resolution, in widescreen, at a steady 60
-fps, with mouse and keyboard controls and optional gameplay tweaks.
+<img src="packaging/icon/icon_1024.png" alt="AR Recomp icon" width="160">
 
-**This repository and the release downloads contain no part of the game,
-neither data nor code. You need your own copy of the game (the USA disc
-image) to play:** the downloadable apps for macOS and Windows read the
-game's code from your disc image and run it in their interpreter. The
-screenshots and animations below are captured from the game for
-illustration.
+# Alien Resurrection: Recompiled
+
+**The PlayStation's *Alien Resurrection*, running natively on macOS, Windows and Linux**
+
+[![Latest release](https://img.shields.io/github/v/release/DiegoDeDios/AlienReRecomp?label=latest%20release)](https://github.com/DiegoDeDios/AlienReRecomp/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/DiegoDeDios/AlienReRecomp/total)](https://github.com/DiegoDeDios/AlienReRecomp/releases)
+[![Build](https://github.com/DiegoDeDios/AlienReRecomp/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/DiegoDeDios/AlienReRecomp/actions/workflows/release.yml)
+
+</div>
+
+Alien Resurrection: Recompiled is a native port of *Alien Resurrection*
+(PlayStation, USA release SLUS-00633), made by **statically recompiling**
+the game's MIPS code. The game runs on a small runtime that stands in for
+the PlayStation's BIOS and hardware, and a modern GPU renderer draws it in
+high resolution and widescreen, at a steady 60 fps. It adds precision
+geometry without the PS1 wobble, mouse and keyboard controls, quick saves
+and optional gameplay tweaks.
+
+### [Download the latest release](https://github.com/DiegoDeDios/AlienReRecomp/releases/latest)
+
+> [!IMPORTANT]
+> This repository and its releases contain no part of the game, neither
+> data nor code. You need your own copy of *Alien Resurrection* (USA,
+> SLUS-00633) as a disc image (a `.cue` sheet with its `.bin` tracks) to
+> play.
 
 | PlayStation (240p, 4:3) | This port (16:9, 3x resolution, precision geometry) |
 | --- | --- |
@@ -21,32 +35,60 @@ illustration.
 *The same frame of the first attract demo. The alien at the right edge is
 only fully visible in widescreen.*
 
-## Contents
+## Table of Contents
 
+* [System Requirements](#system-requirements)
+* [Getting Started](#getting-started)
 * [Features](#features)
-  * [Plug and play](#plug-and-play)
-  * [Widescreen and high resolution](#widescreen-and-high-resolution)
-  * [No more wobbly polygons](#no-more-wobbly-polygons)
-  * [Steady 60 fps](#steady-60-fps)
-  * [Mouse and keyboard](#mouse-and-keyboard)
-  * [Responsive controls](#responsive-controls)
+  * [Plug and Play](#plug-and-play)
+  * [Widescreen and Wider Field of View](#widescreen-and-wider-field-of-view)
+  * [High Resolution](#high-resolution)
+  * [Precision Geometry](#precision-geometry)
+  * [Steady 60 FPS](#steady-60-fps)
+  * [Mouse and Keyboard](#mouse-and-keyboard)
+  * [Responsive Controls](#responsive-controls)
+  * [Quick Save](#quick-save)
+  * [Settings Without Leaving the Game](#settings-without-leaving-the-game)
   * [Sprint](#sprint)
-  * [Enemy damage sliders](#enemy-damage-sliders)
-  * [Infinite flashlight](#infinite-flashlight)
-  * [Quick save](#quick-save)
-  * [Settings without leaving the game](#settings-without-leaving-the-game)
-  * [Smaller changes](#smaller-changes)
-* [Status](#status)
-* [TODO](#todo)
-* [Build](#build)
-* [Run](#run)
-* [How it works](#how-it-works)
+  * [Enemy Damage Sliders](#enemy-damage-sliders)
+  * [Infinite Flashlight](#infinite-flashlight)
+  * [Smaller Changes](#smaller-changes)
+* [Controls](#controls)
+* [Planned Features](#planned-features)
+* [FAQ](#faq)
+* [Known Issues](#known-issues)
+* [Building](#building)
+* [How It Works](#how-it-works)
 * [Credits](#credits)
 * [License](#license)
 
+## System Requirements
+
+| System | Requirements |
+| --- | --- |
+| macOS | macOS 11 or later, Apple Silicon or Intel |
+| Windows | Windows 10 or 11, 64-bit, a GPU with Vulkan or Direct3D 12 |
+| Linux | x86_64 with glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36, SteamOS 3 or newer) and a Vulkan driver |
+
+If the game does not start, make sure your graphics drivers are up to date.
+
+## Getting Started
+
+1. Download the package for your system from the
+   [latest release](https://github.com/DiegoDeDios/AlienReRecomp/releases/latest)
+   and unpack it.
+2. Run **AlienResurrection** (`.app` on macOS, `.exe` on Windows,
+   `./AlienResurrection` on Linux).
+   * macOS: the app is not notarized. On first launch macOS blocks it; open
+     *System Settings › Privacy & Security* and choose *Open Anyway*.
+   * Windows: SmartScreen may warn about an unrecognized app; choose
+     *More info › Run anyway*.
+3. Choose **Select disc image** and pick your `Alien Resurrection (USA).cue`.
+4. Adjust **Settings** and **Controls** if you like, then **Start game**.
+
 ## Features
 
-### Plug and play
+### Plug and Play
 
 Start the port, choose your disc image (`.cue`, one of its `.bin` tracks or
 the folder) and press **Start game**. The launcher checks that it is the USA
@@ -56,20 +98,23 @@ or a controller.
 
 ![The launcher](docs/media/launcher.jpg)
 
-### Widescreen and high resolution
+### Widescreen and Wider Field of View
 
-* **Widescreen** at 16:9, 16:10, 21:9 or 32:9 widens the field of view in 3D
-  instead of stretching the picture. The HUD, menus, loading screens and
-  movies keep their original 4:3 shapes.
+* **Widescreen** at 16:9, 16:10, 21:9 or 32:9 widens the view in 3D instead
+  of stretching the picture. The HUD, menus, loading screens and movies keep
+  their original 4:3 shapes.
 * **Field of view** slider: the game's own view is fairly narrow (53°
   across the screen at 4:3, 67° with 16:9 widescreen); widen it up to 100°.
   The first-person weapon keeps its original framing.
+
+### High Resolution
+
 * **Internal resolution** from the original 240p up to 8x (1920p); 4x by
   default.
 * **Smooth or sharp scaling** to the window, fullscreen, and vsync without
   tearing.
 
-### No more wobbly polygons
+### Precision Geometry
 
 The PlayStation rounds every vertex to a whole pixel and maps textures
 without perspective correction, which makes polygons jitter and textures
@@ -79,24 +124,27 @@ geometry stays still and textures stay straight. Walls that reach past the
 camera, which the original draws smeared and bent at the edge of the
 screen, are clipped properly. It can be switched off for the original look.
 
-### Steady 60 fps
+### Steady 60 FPS
 
 On the original hardware busy scenes drop to 20–30 fps. The port runs the
 game's code at three times the original CPU speed by default, which keeps
 60 fps; the game measures elapsed time itself, so it plays at the same speed
-as on the console.
+as on the console. The game also capped itself at 20 fps while loading the
+next part of a level (from the terminal or door that starts the load until
+you walk through); the port stays at 60.
 
-### Mouse and keyboard
+### Mouse and Keyboard
 
 Look and turn with the mouse (adjustable sensitivity), move with WASD, fire
 with the left button. Every PlayStation button can be bound to two keys or
 mouse buttons and to a controller button on the **Controls** page.
 Controllers are detected automatically and start with the PlayStation
-layout. F1 releases the mouse; clicking the window captures it again.
+layout. F1 releases the mouse; clicking the window captures it again. See
+[Controls](#controls) for the default bindings.
 
 ![The Controls page](docs/media/controls.jpg)
 
-### Responsive controls
+### Responsive Controls
 
 In the original the sticks reach the game two frames late and are ignored
 until pushed 38% of the way; the camera stick only sets a turning speed.
@@ -119,6 +167,26 @@ The port reads the controls right when the game needs them:
 | Movement with the left stick half pushed | 18% | 45% |
 | Full-speed turn | 137°/s | 206°/s |
 
+### Quick Save
+
+The original only saves at the save stations, and loading one puts you back
+in front of that station. **Quick save** (on by default) adds one slot
+that keeps the exact moment: press **F5** anywhere to save and **F9** to
+return to it, with enemies, doors, items and sounds exactly as they were.
+It works in the title menu too, so a session can pick up where it left off
+right after starting the game. The keys can be changed in **Controls**
+(also for a controller), and the pause menu (F2) has **Quick save** and
+**Quick load** entries. Memory card saves are not touched.
+
+### Settings Without Leaving the Game
+
+Press **F2** (or hold **Select + Start** on a controller) to pause and open
+the settings and controls over the game. Changes apply immediately, except
+internal resolution, VSync and skipping the intro, which are marked as
+applying on the next start. **Quit to desktop** is there too.
+
+![The in-game pause menu](docs/media/pause.jpg)
+
 ### Sprint
 
 Hold **Shift** (or click the left stick on a controller) to move faster.
@@ -131,7 +199,7 @@ doors and slopes behave as usual and the speed ramps up and down smoothly.
 *The same four seconds from the start of level 1: running (left) and
 sprinting at 190% (right).*
 
-### Enemy damage sliders
+### Enemy Damage Sliders
 
 Make the game easier or harder: **Settings › Enemy damage** has an
 "All enemies" percentage and one for each kind of enemy (alien warriors,
@@ -153,7 +221,7 @@ hits. Right: enemy damage at 50%, she is still standing.*
 
 ![The Enemy damage settings](docs/media/settings.jpg)
 
-### Infinite flashlight
+### Infinite Flashlight
 
 The flashlight (from the second level on) normally lasts about 20 seconds
 and then has to recharge while switched off. With **Infinite flashlight**
@@ -163,42 +231,7 @@ and then has to recharge while switched off. With **Infinite flashlight**
 | --- | --- |
 | ![The original flashlight has run out](docs/media/flashlight_original.jpg) | ![The infinite flashlight is still on](docs/media/flashlight_infinite.jpg) |
 
-### Quick save
-
-The original only saves at the save stations, and loading one puts you back
-in front of that station. **Quick save** (on by default) adds one slot
-that keeps the exact moment: press **F5** anywhere to save and **F9** to
-return to it, with enemies, doors, items and sounds exactly as they were.
-It works in the title menu too, so a session can pick up where it left off
-right after starting the game. The keys can be changed in **Controls**
-(also for a controller), and the pause menu (F2) has **Quick save** and
-**Quick load** entries. Memory card saves are not touched.
-
-The quick save is a snapshot of the whole emulated PlayStation (about
-4 MB), stored as `quicksave.state` next to the memory cards and
-`config.ini`:
-
-| System | Quick save |
-| --- | --- |
-| macOS | `~/Library/Application Support/AlienResurrectionPort/AlienResurrection/quicksave.state` |
-| Windows | `%APPDATA%\AlienResurrectionPort\AlienResurrection\quicksave.state` |
-| Linux | `~/.local/share/AlienResurrectionPort/AlienResurrection/quicksave.state` (or under `$XDG_DATA_HOME` when set) |
-
-With `--save-dir DIR` it goes to `DIR/quicksave.state` instead. Delete the
-file to start without a quick save; copy it to keep one aside. A quick save
-belongs to the version of the port that made it: after an update, save at a
-station first.
-
-### Settings without leaving the game
-
-Press **F2** (or hold **Select + Start** on a controller) to pause and open
-the settings and controls over the game. Changes apply immediately, except
-internal resolution, VSync and skipping the intro, which are marked as
-applying on the next start. **Quit to desktop** is there too.
-
-![The in-game pause menu](docs/media/pause.jpg)
-
-### Smaller changes
+### Smaller Changes
 
 * Memory card saves work (save, load, overwrite) and are kept as standard
   memory card images.
@@ -208,277 +241,16 @@ applying on the next start. **Quit to desktop** is there too.
   option still changes it.
 * Screenshots with F12.
 
-## Status
+## Controls
 
-| Area | State |
-| --- | --- |
-| Boot loader (`SLUS_006.33`): legal screen, FMV intro, LoadExec | working |
-| Main executable (`ALIEN.BIN`): menus, options, level 1 gameplay | working (playtesting) |
-| Hardware renderer (Metal on macOS; Vulkan / Direct3D 12 on Windows; Vulkan on Linux), upscaled | working |
-| Windows build (cross-compiled with MinGW-w64) | working (Wine; Parallels VM via Direct3D 12) |
-| Linux build (x86_64, glibc 2.35+) | working (Ubuntu 22.04 container, Vulkan via Mesa) |
-| Release packages without game code (interpreter): macOS .app (universal), Windows .exe, Linux .tar.gz | working |
-| Widescreen (16:9 / 16:10 / 21:9 / 32:9) | working (hardware renderer) |
-| Steady 60 fps (CPU headroom), vsync without tearing | working |
-| Precision geometry (no vertex wobble, perspective-correct textures) | working (hardware renderer) |
-| Sprint (hold Shift) | working |
-| Infinite flashlight (optional) | working |
-| Enemy damage settings (overall and per kind of enemy) | working |
-| Responsive controls: direct mouse look, sticks without delay | working |
-| Launcher: disc selection, settings, control rebinding | working |
-| In-game overlay (F2 / Select+Start): settings, controls, quit | working |
-| Quick save / quick load (F5 / F9, save states) | working |
-| Software renderer (reference) | working |
-| FMV (STR/MDEC), XA audio, CD-DA | working (audio needs listening tests) |
-| Memory card saves (`bu00:`): save, load, overwrite | working |
-| DualShock analog + rumble protocol | implemented (no rumble output yet) |
-
-Known limitations: the Windows build has been verified under Wine and in a
-Parallels VM, but not yet on a native Windows PC; the Linux build has been
-verified in containers, not yet on a Linux desktop; levels after the first have not been
-fully played through; no rumble output; the PlayStation Mouse is not
-emulated.
-
-## TODO
-
-* **High-resolution texture replacement.** The game's art can't simply be
-  swapped for bigger images: textures are small 4-bit tiles packed into
-  256×256 VRAM pages, each drawn with its own 16-colour palette (see
-  [Textures and images](docs/FINDINGS.md#textures-and-images)). Plan, as in
-  emulators such as DuckStation:
-  1. Dump every texture the game draws (a page region plus its palette) to
-     PNG, named by a hash of its pixels and palette.
-  2. Upscale or repaint the dumped images.
-  3. Have the hardware renderer (`src/render/gpu_hw.c`) load replacements
-     with the same names and draw them instead of the originals.
-
-  Full-screen images (loading screens, title art) can be replaced whole.
-* **Testing on native Windows and Linux machines** (so far: Wine, a
-  Parallels VM and containers).
-* **Linux: an AppImage or Flatpak** for desktop integration; the release is
-  a plain archive for now. arm64 Linux builds work with `ARCH=arm64
-  tools/build_linux_docker.sh` but are not part of the release yet.
-
-## Build
-
-### macOS
-
-Requirements: macOS, Xcode command line tools, CMake, Ninja, Python 3, SDL3
-(`brew install sdl3 cmake ninja`).
-
-```bash
-tools/regen.sh
-```
-
-```bash
-cmake -S . -B build -G Ninja && ninja -C build
-```
-
-`tools/regen.sh` extracts the disc filesystem into `disc/`, identifies the
-Sony PsyQ library functions, and regenerates the recompiled C code in
-`src/gen/`. It reads your disc image from `AlienResurrectionBinary/` and
-needs `reference/psx_psyq_signatures`
-(https://github.com/lab313ru/psx_psyq_signatures).
-
-### Game code: recompiled or interpreted
-
-The CMake option `GAME_CODE` decides how the game's code runs:
-
-* `recompiled` (the default when `src/gen` exists): the C that
-  `tools/regen.sh` translated from your disc is compiled in. Fastest, and
-  what development uses. Such a binary contains the game's code, so it is
-  for your own use only.
-* `interpreted` (the default otherwise): no game code in the binary. The
-  game's executables are read from the player's disc image when they play
-  and run by the port's MIPS interpreter, with the same enhancements
-  (native hooks, precision geometry). This is what the releases use; it
-  needs no disc image to build and runs the game at 2.5× real time or more
-  on an Apple M1.
-
-`--interpret` runs a recompiled build through the interpreter, for
-comparison.
-
-### Release packages
-
-Both release scripts build `GAME_CODE=interpreted` packages; no disc image
-is needed, so the GitHub Actions workflow
-(`.github/workflows/release.yml`) builds them too: for every pull request
-into `main`, every push to `main` and on demand. A pull request can only be
-merged once **Build (macOS)**, **Build (Windows)** and **Build (Linux)**
-have passed (required checks of `main`, with **Version bump** below); the
-packages of each run are kept as workflow artifacts for 14 days, handy for
-trying a pull request before merging it.
-
-**Every merged pull request is a release.** The version lives in one place,
-`PORT_VERSION` in `src/platform/launcher.h`, and each pull request into
-`main` must raise it (the **Version bump** check,
-`.github/workflows/version-check.yml`, which runs
-`tools/check_version_bump.sh`; it can be run locally the same way). When
-the merge reaches `main`, the release workflow tags the commit
-`v<version>` and creates a **draft** GitHub release, **ARR v<version>**,
-with the macOS, Windows
-and Linux packages, `packaging/RELEASE_NOTES.md` and the list of pull
-requests since the last release. Review the draft and publish it by hand.
-Pushing a `v*` tag by hand still works too (it must match `PORT_VERSION`).
-
-**Pre-releases** let people try a feature branch before its pull request
-is merged. Run **Pre-release** (`.github/workflows/pre-release.yml`) on the
-branch: *Actions > Pre-release > Run workflow* with *Use workflow from* set
-to the branch, or `gh workflow run pre-release.yml --ref <branch>`. The
-branch must contain `main` (merge `main` into it first) and raise
-`PORT_VERSION` to a version not released yet. The workflow builds the
-branch's head with the version marked `<version>-pre` (package names,
-launcher, quick saves), tags it `v<version>-pre` and publishes the GitHub
-pre-release **ARR v<version>-pre** with the packages and the branch's
-commits. Running it again replaces that pre-release and moves the tag to
-the branch's new head; the release of the merged pull request is not
-affected.
-
-```bash
-tools/build_macos_app.sh
-```
-
-builds `build-mac/release/AlienResurrection-<version>-macos.zip`: a
-universal (Apple Silicon and Intel, macOS 11+) `AlienResurrection.app` with
-SDL3's official framework inside, ad-hoc signed (not notarized), plus a
-README and the licenses. The app icon is original artwork
-(`tools/make_icons.sh`).
-
-### Windows
-
-The Windows release is cross-compiled from macOS (or Linux) with
-MinGW-w64:
-
-```bash
-brew install mingw-w64
-```
-
-```bash
-tools/build_windows.sh
-```
-
-The script downloads SDL3's official MinGW development package (pinned
-version, checksum verified), builds into `build-win/` (interpreted; use
-`GAME_CODE=recompiled` for a local recompiled build), and packages
-`build-win/release/AlienResurrection-<version>-windows-x64.zip`: the
-executable, `SDL3.dll`, a short README and the licenses. The executable
-needs no other DLLs (Windows 10/11 ship the C runtime). Building natively on
-Windows works the same way from an MSYS2 MinGW shell; MSVC is not supported
-(the generated code uses GNU C extensions).
-
-On Windows the renderer uses Vulkan and falls back to Direct3D 12 (Settings
-→ Graphics API, or `--gpu-driver`); saves and `config.ini` live in
-`%APPDATA%\AlienResurrectionPort\AlienResurrection\`, along with `alien.log`
-when the game is not started from a terminal.
-
-### Linux
-
-```bash
-tools/build_linux.sh
-```
-
-builds `build-linux-x86_64/release/AlienResurrection-<version>-linux-x86_64.tar.gz`
-on a Linux machine (Ubuntu/Debian build dependencies:
-`sudo tools/linux/install_deps_ubuntu.sh`). It compiles SDL3 from the
-official source release (pinned, checksum verified) and ships it in `lib/`
-next to the program, which finds it through its `$ORIGIN` run path; the C++
-runtime is linked statically. Build on an old distribution so the result
-runs on newer ones: the release is built on Ubuntu 22.04 (glibc 2.35).
-
-On macOS (or anywhere with Docker, e.g. `brew install colima docker`),
-`tools/build_linux_docker.sh` runs the same build in an Ubuntu 22.04
-container (`ARCH=arm64` for arm64).
-
-The renderer uses Vulkan; settings and saves live in
-`~/.local/share/AlienResurrectionPort/AlienResurrection/`.
-
-### Shaders
-
-The renderer's shaders are written once in GLSL (`src/render/shaders/`)
-and compiled for every backend into `src/render/shaders_gen.h` (SPIR-V for
-Vulkan, HLSL for Direct3D 12 compiled to DXBC at start-up, MSL for Metal).
-The generated header is committed; after editing a shader run
-`python3 tools/compile_shaders.py` (needs `glslang` and `spirv-cross`).
-
-## Run
-
-```bash
-./build/alien
-```
-
-The launcher opens first:
-
-* **Select disc image**: pick your own `Alien Resurrection (USA).cue` (or one
-  of its `.bin` tracks, or the folder). The launcher checks that it is the
-  USA release (SLUS-00633) and then shows the game's title art, read from
-  your disc. No game data ships with the port.
-* **Settings**: widescreen and aspect ratio, internal resolution,
-  precision geometry (PGXP), smooth scaling, vsync, fullscreen, frame rate
-  display, field of view, sprint and sprint speed, infinite flashlight,
-  quick save, skip
-  intro movies,
-  frame rate boost (emulated CPU speed), and enemy damage (overall and per
-  kind of enemy: alien warriors, facehuggers, chestbursters, queen,
-  newborn, marines, sentry tank, acid blood).
-* **Controls**: rebind every PlayStation button, the keyboard stick
-  directions, sprint, fast forward, quick save and quick load, for
-  keyboard/mouse (two keys per
-  action) and controller. The mouse and stick settings are there too: mouse
-  look and sensitivity, responsive sticks, stick dead zone, camera stick
-  speed and response curve.
-* **Start game**.
-
-Everything is navigable with the mouse, the keyboard (arrows, Enter, Esc)
-or a controller (D-pad, A, B). Settings are saved to `config.ini` next to
-the memory cards (see below).
-
-While playing, **F2** (or holding **Select + Start** on a controller for a
-moment) pauses the game and opens the same Settings and Controls pages over
-it, plus **Quick save**, **Quick load** and **Quit to desktop**. Changes apply immediately, except internal
-resolution, VSync and skip intro movies, which are marked "applies on next
-start". F2, Esc, Start or Circle/B resumes.
-
-Command-line options override `config.ini` for one run (useful for
-testing):
-
-| Option | Meaning |
-| --- | --- |
-| `--play` | start the game directly, without the launcher |
-| `--disc PATH` | disc image: the `.cue` file or its folder (default `AlienResurrectionBinary/` in the current folder) |
-| `--skip-intro` | skip the boot loader and intro movies (same as `--exe ALIEN.BIN`) |
-| `--aspect W:H` | display aspect: `16:9` (default), `16:10`, `21:9`, or `4:3` for the original look |
-| `--fov DEG` | horizontal field of view in degrees, up to 100 (default `original`: 67 at 16:9, 53 at 4:3) |
-| `--scale N` | internal resolution multiplier for the GPU renderer (default 4) |
-| `--cpu-speed PCT` | emulated CPU speed (default 300 = steady 60 fps; 100 = original hardware) |
-| `--no-vsync` | present without vsync (lowest latency, may tear) |
-| `--no-pgxp` | original PS1 geometry: integer vertices and affine (warping) textures |
-| `--sprint-speed PCT` | player speed while sprinting (default 190; 100 turns sprint off) |
-| `--no-infinite-flashlight` | the flashlight battery runs down and recharges as in the original |
-| `--enemy-damage PCT`, `--enemy-damage GROUP=PCT` | damage taken from all enemies / one kind (`alien_warriors`, `facehuggers`, `chestbursters`, `queen`, `newborn`, `marines`, `sentry_tank`, `acid_blood`), 0–200, default 100; repeatable |
-| `--fullscreen`, `--show-fps`, `--sharp`, `--mouse-sens N` | as in the launcher |
-| `--original-stick` | both sticks through the game's own input handling (delay, 38% dead zone) |
-| `--save-dir DIR` | folder for memory cards, `config.ini` and the quick save (default below) |
-| `--renderer sw` | use the software rasterizer (pixel-accurate reference) |
-| `--headless --frames N --shot F:file.png` | run without a window, write screenshots (ignores `config.ini`) |
-| `--record F:N:STEP:PREFIX` | write N screenshots, one every STEP frames from frame F, as `PREFIX_0000.png`… |
-| `--press F:button[:len]`, `--stick F:len:lx:ly:rx:ry`, `--mouse F:len:dx:dy`, `--fuzz F:seed` | scripted / random input (testing; `sprint` is a button name too; mouse motion in counts per frame) |
-| `--launcher-shot file.png [--launcher-page settings\|controls]`, `--launcher-keys K1,K2,…` | render a launcher page to PNG / drive it with scripted keys (testing, docs) |
-| `--overlay-keys F:T1,T2,…`, `--overlay-shot PREFIX` | from frame F, drive the in-game overlay with tokens: SDL key names (`F2`, `Down`, `Return`…), `pad:back+start[:ticks]` (a virtual controller), `WAITn`, and `SHOT` (writes the window with the overlay to `PREFIX_N.png`) |
-| `--wav file.wav` | record the audio output |
-| `--verify ADDR` | lockstep-check a recompiled function against the interpreter |
-| `--watch ADDR[:LEN]` | log every store into a RAM range (debugging) |
-| `--poke F:ADDR:VALUE[:SIZE]` | write a value (hex; 1, 2 or 4 bytes, default 4) into RAM at frame F (testing) |
-| `--save-state F:PATH`, `--load-state F:PATH` | quick save to / load from PATH at frame F (testing; the frame counter is part of the state, so after a load frame-numbered options continue from the saved frame) |
-| `--trace-bios`, `--log 3` | trace BIOS calls / verbose hardware logging |
-
-The game uses the DualShock "Dual Stick" scheme (left stick moves/strafes,
-right stick looks/turns). Default keyboard and mouse bindings (all
-changeable in **Controls**):
+The game uses the DualShock "Dual Stick" scheme (left stick moves and
+strafes, right stick looks and turns). Default keyboard and mouse bindings,
+all changeable in **Controls**:
 
 | Key | Pad | In game |
 | --- | --- | --- |
 | W A S D | left stick | move / strafe |
-| Shift (hold) | | sprint (added; not in the original game) |
+| Shift (hold) | | sprint (added) |
 | mouse (click window to capture, F1 releases) | right stick | look / turn |
 | arrows | d-pad | menu navigation, look / turn |
 | left click / Left Ctrl | R1 | fire |
@@ -491,7 +263,7 @@ changeable in **Controls**):
 | Esc / Enter | Start | pause |
 | Tab | Select | look hold |
 | V / B (middle click) | L3 / R3 | centre view / quick turn |
-| ` (backtick) | | fast forward |
+| ` (backtick) | | fast forward (added) |
 | F5 / F9 | | quick save / quick load (added) |
 
 Fixed keys: F2 opens the settings overlay, F11 or Cmd+Ctrl+F toggles
@@ -507,29 +279,117 @@ returns to centre; the game's L3 "centre view" is on V). Holding Select and
 Start together opens the overlay; neither button reaches the game then, so
 the game's own pause menu stays closed.
 
-Saves are stored as standard 128 KiB memory card images in
-`~/Library/Application Support/AlienResurrectionPort/AlienResurrection/`
-(Windows: `%APPDATA%\AlienResurrectionPort\AlienResurrection\`; Linux:
-`~/.local/share/AlienResurrectionPort/AlienResurrection/`),
-together with `config.ini` and the quick save (`quicksave.state`).
-The game keeps its options (Invert Y, crosshair, vibration…) inside each save
-and restores them from the newest save at startup. Invert Y defaults to off
-in this port (the original defaulted to on).
+## Planned Features
 
-## How it works
+* **High-resolution texture replacement.** The game's art can't simply be
+  swapped for bigger images: textures are small 4-bit tiles packed into
+  256×256 VRAM pages, each drawn with its own 16-colour palette (see
+  [Textures and images](docs/FINDINGS.md#textures-and-images)). The plan,
+  as in emulators such as DuckStation, is to dump every texture the game
+  draws to PNG (named by a hash of its pixels and palette), let them be
+  upscaled or repainted, and have the renderer draw the replacements.
+  Full-screen images (loading screens, title art) can be replaced whole.
+* **Linux: an AppImage or Flatpak** for desktop integration, and arm64
+  packages (they build with `ARCH=arm64 tools/build_linux_docker.sh` but
+  are not part of the release yet).
+
+## FAQ
+
+#### What is static recompilation?
+
+Translating a program's machine code into another language ahead of time
+instead of emulating it while it runs. `tools/recomp.py` turns each of the
+game's roughly 2,000 MIPS functions into a C function, which is compiled
+for your computer together with a runtime that replaces the PlayStation's
+BIOS and hardware.
+
+#### Why do the downloads interpret the game's code then?
+
+The recompiled C is derived from the game, so it can't be distributed. The
+downloads read the game's code from your disc image when you play and run
+it with the port's MIPS interpreter, with exactly the same enhancements.
+Building from source with your own disc gives you the recompiled version
+(see [Building](#building)).
+
+#### Is this an emulator? Can it run other games?
+
+No. The runtime only implements what *Alien Resurrection* uses, and the
+port only accepts the USA release (SLUS-00633). Other games, and other
+releases of this one, are not supported.
+
+#### Is this based on a decompilation?
+
+No. The port runs the game's original code unchanged; its enhancements are
+small native replacements for individual game functions, found by reverse
+engineering the game. What has been learned so far is in
+[docs/FINDINGS.md](docs/FINDINGS.md).
+
+#### Where are my saves and settings?
+
+Memory cards (standard 128 KiB images), `config.ini` and the quick save
+(`quicksave.state`) live in:
+
+| System | Folder |
+| --- | --- |
+| macOS | `~/Library/Application Support/AlienResurrectionPort/AlienResurrection/` |
+| Windows | `%APPDATA%\AlienResurrectionPort\AlienResurrection\` |
+| Linux | `~/.local/share/AlienResurrectionPort/AlienResurrection/` (or under `$XDG_DATA_HOME` when set) |
+
+The game keeps its own options (Invert Y, crosshair, vibration…) inside
+each memory card save and restores them from the newest save at startup.
+Delete `quicksave.state` to start without a quick save; copy it to keep one
+aside.
+
+#### Why won't my quick save load after an update?
+
+A quick save is a snapshot of the whole emulated PlayStation (about 4 MB)
+and belongs to the version of the port that made it. Before updating, save
+at a station; memory card saves carry over.
+
+#### Can I get the original look and feel back?
+
+Yes: in **Settings** turn off Widescreen, Precision geometry, Responsive
+sticks, Sprint and Infinite flashlight, and set Internal resolution to 1x,
+Field of view to Original and Frame rate boost to Original (100%).
+
+#### Where do I report a bug?
+
+In the [issue tracker](https://github.com/DiegoDeDios/AlienReRecomp/issues).
+On Windows, `alien.log` in the save folder (above) has details when the
+game fails to start.
+
+## Known Issues
+
+* No rumble output: the DualShock rumble protocol is implemented but not
+  passed on to controllers.
+* The PlayStation Mouse, which the game supports, is not emulated.
+* The Windows build has been verified under Wine and in a Parallels VM, and
+  the Linux build in containers; reports from native Windows and Linux
+  machines are welcome.
+* Not every level has been played through on the port yet.
+
+## Building
+
+Building is not required to play: the
+[releases](https://github.com/DiegoDeDios/AlienReRecomp/releases) have
+ready-made packages, which contain no game data or code. To build the port
+yourself, as a recompiled build from your own disc or as the interpreted
+build the releases use, see [docs/BUILDING.md](docs/BUILDING.md). It also
+covers the release workflow and the command-line options used for testing.
+
+## How It Works
 
 * `tools/recomp.py` translates every MIPS function of the two game
-  executables (the boot loader and `ALIEN.BIN`, about 2,000 functions) into
-  C, one C function per MIPS function. Sony's PsyQ library functions are
-  identified by signature. Release builds instead interpret the original
-  machine code read from the player's disc, calling the same native hooks
-  (see [Game code](#game-code-recompiled-or-interpreted)).
+  executables (the boot loader and `ALIEN.BIN`) into C, one C function per
+  MIPS function. Sony's PsyQ library functions are identified by
+  signature. Release builds instead interpret the original machine code
+  read from the player's disc, calling the same native hooks.
 * The runtime (`src/runtime`, `src/hw`) replaces the PlayStation BIOS and
   models the hardware the game and its libraries talk to: GPU, GTE, CD-ROM,
   SPU, MDEC, DMA, timers, controllers and memory cards.
 * The renderer (`src/render`) draws the game's GPU commands through the
-  SDL3 GPU API (Metal on macOS, Vulkan or Direct3D 12 on Windows), at a
-  multiple of the original resolution.
+  SDL3 GPU API (Metal on macOS, Vulkan or Direct3D 12 on Windows, Vulkan
+  on Linux), at a multiple of the original resolution.
 * The enhancements are small native replacements for individual game
   functions (`src/runtime/native.c`), found by reverse engineering the
   game.
@@ -537,29 +397,6 @@ in this port (the original defaulted to on).
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the port works and
 [docs/FINDINGS.md](docs/FINDINGS.md) for what has been learned about the
 game so far.
-
-```
-tools/            Python: ISO extraction, PS-X EXE loader, MIPS decoder,
-                  control-flow analysis, PsyQ signature matching, recompiler
-src/gen/          generated C (one function per MIPS function) — not committed
-src/runtime/      CPU glue, scheduler, interrupts, HLE BIOS, GTE, interpreter,
-                  lockstep verifier, disc/ISO9660 and memory card storage,
-                  game enhancements (native.c)
-src/hw/           PS1 hardware: DMA, timers, GPU command processor + software
-                  rasterizer, CD-ROM, SPU, MDEC, controller port
-src/render/       SDL GPU hardware renderer and presentation; shaders/ (GLSL)
-                  and shaders_gen.h (compiled for Vulkan, Direct3D 12, Metal)
-src/platform/     SDL3 frontend: launcher (Dear ImGui), settings/config.ini,
-                  input bindings, window, audio, pacing, screenshots
-third_party/      Dear ImGui (MIT), vendored
-cmake/, packaging/  Windows cross-compilation toolchain and release files
-docs/             architecture and reverse-engineering notes
-docs/media/       README screenshots and animations
-```
-
-The README media are captured from your own disc with
-`tools/make_media.sh` (headless runs of the port, scripted input, and
-ffmpeg), so they can be regenerated after changes.
 
 ## Credits
 
