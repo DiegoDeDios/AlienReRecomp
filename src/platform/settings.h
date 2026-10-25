@@ -49,6 +49,7 @@ typedef struct Settings {
     /* video */
     bool widescreen;
     int aspect_w, aspect_h;  /* widescreen aspect, e.g. 16:9 */
+    int fov;                 /* horizontal field of view in degrees, 0 = original */
     int internal_scale;      /* GPU internal resolution multiplier */
     bool pgxp;
     bool vsync;
@@ -80,6 +81,10 @@ typedef struct Settings {
 
 void settings_defaults(Settings *s);
 void settings_default_bindings(Settings *s);
+/* Field of view: the game's own horizontal FOV in degrees for these display
+ * settings (software renderer: no widescreen), and the widest allowed. */
+double settings_fov_original(const Settings *s, bool software);
+#define SETTINGS_FOV_MAX 100
 bool settings_load(Settings *s, const char *path);
 bool settings_save(const Settings *s, const char *path);
 const char *settings_path(void);

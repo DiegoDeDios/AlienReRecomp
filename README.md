@@ -61,6 +61,9 @@ or a controller.
 * **Widescreen** at 16:9, 16:10, 21:9 or 32:9 widens the field of view in 3D
   instead of stretching the picture. The HUD, menus, loading screens and
   movies keep their original 4:3 shapes.
+* **Field of view** slider: the game's own view is fairly narrow (53°
+  across the screen at 4:3, 67° with 16:9 widescreen); widen it up to 100°.
+  The first-person weapon keeps its original framing.
 * **Internal resolution** from the original 240p up to 8x (1920p); 4x by
   default.
 * **Smooth or sharp scaling** to the window, fullscreen, and vsync without
@@ -72,8 +75,9 @@ The PlayStation rounds every vertex to a whole pixel and maps textures
 without perspective correction, which makes polygons jitter and textures
 warp as the camera moves. **Precision geometry** (in the spirit of PGXP)
 keeps the full precision of every projected vertex and its depth, so
-geometry stays still and textures stay straight. It can be switched off for
-the original look.
+geometry stays still and textures stay straight. Walls that reach past the
+camera, which the original draws smeared and bent at the edge of the
+screen, are clipped properly. It can be switched off for the original look.
 
 ### Steady 60 fps
 
@@ -410,7 +414,8 @@ The launcher opens first:
   your disc. No game data ships with the port.
 * **Settings**: widescreen and aspect ratio, internal resolution,
   precision geometry (PGXP), smooth scaling, vsync, fullscreen, frame rate
-  display, sprint and sprint speed, infinite flashlight, quick save, skip
+  display, field of view, sprint and sprint speed, infinite flashlight,
+  quick save, skip
   intro movies,
   frame rate boost (emulated CPU speed), and enemy damage (overall and per
   kind of enemy: alien warriors, facehuggers, chestbursters, queen,
@@ -442,6 +447,7 @@ testing):
 | `--disc PATH` | disc image: the `.cue` file or its folder (default `AlienResurrectionBinary/` in the current folder) |
 | `--skip-intro` | skip the boot loader and intro movies (same as `--exe ALIEN.BIN`) |
 | `--aspect W:H` | display aspect: `16:9` (default), `16:10`, `21:9`, or `4:3` for the original look |
+| `--fov DEG` | horizontal field of view in degrees, up to 100 (default `original`: 67 at 16:9, 53 at 4:3) |
 | `--scale N` | internal resolution multiplier for the GPU renderer (default 4) |
 | `--cpu-speed PCT` | emulated CPU speed (default 300 = steady 60 fps; 100 = original hardware) |
 | `--no-vsync` | present without vsync (lowest latency, may tear) |

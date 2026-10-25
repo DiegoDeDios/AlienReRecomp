@@ -555,6 +555,10 @@ static void apply_live(void) {
         g_infinite_flashlight = c->infinite_flashlight;
         LOGI("overlay", "infinite flashlight %s", c->infinite_flashlight ? "on" : "off");
     }
+    if (c->fov != a->fov) {
+        g_fov_deg = c->fov;
+        LOGI("overlay", "field of view %d", c->fov);
+    }
     if (c->enemy_damage_pct != a->enemy_damage_pct ||
         memcmp(c->enemy_damage_group_pct, a->enemy_damage_group_pct,
                sizeof c->enemy_damage_group_pct)) {
@@ -1029,6 +1033,8 @@ static void parse_args(int argc, char **argv) {
                    "  --cpu-speed PCT emulated CPU speed in percent (default 300; 100 = original)\n"
                    "  --sprint-speed PCT  movement speed while Shift is held (default 190; 100 = off)\n"
                    "  --no-infinite-flashlight  the flashlight battery runs down as in the original\n"
+                   "  --fov DEG       horizontal field of view in degrees, up to 100 (default:\n"
+                   "                  original, 67 at 16:9 and 53 at 4:3)\n"
                    "  --enemy-damage PCT|GROUP=PCT  damage taken from enemies (default 100;\n"
                    "                  groups as in config.ini [enemy_damage]; repeatable)\n"
                    "  --mouse-sens N  mouse-look sensitivity (default 6)\n"
@@ -1130,6 +1136,14 @@ static void parse_args(int argc, char **argv) {
             g_cfg.pgxp = false;
         } else if (!strcmp(a, "--no-infinite-flashlight")) {
             g_cfg.infinite_flashlight = false;
+        } else if (!strcmp(a, "--fov") && v) {
+            g_cfg.fov = !strcmp(v, "original") ? 0 : atoi(v);
+            if (g_cfg.fov < 0 || g_cfg.fov > SETTINGS_FOV_MAX) {
+                fprintf(stderr, "bad --fov %s (degrees up to %d, or original)\n", v,
+                        SETTINGS_FOV_MAX);
+                exit(1);
+            }
+            i++;
         } else if (!strcmp(a, "--enemy-damage") && v) {
             /* PCT (all enemies) or GROUP=PCT */
             const char *eq = strchr(v, '=');
@@ -1261,6 +1275,7 @@ static void apply_settings(const Settings *c) {
     opt.mouse_sens = c->mouse_sens;
     g_sprint_pct = c->sprint ? c->sprint_pct : 100;
     g_infinite_flashlight = c->infinite_flashlight;
+    g_fov_deg = c->fov;
     g_cycle_scale = cycle_scale_for(c->cpu_pct);
     g_enemy_damage_pct = c->enemy_damage_pct;
     memcpy(g_enemy_damage_group_pct, c->enemy_damage_group_pct, sizeof g_enemy_damage_group_pct);

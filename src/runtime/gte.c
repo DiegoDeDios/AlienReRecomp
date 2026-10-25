@@ -194,19 +194,20 @@ static void rtp(CPU *c, int v, int sf, int lm, int last) {
     push_sxy(c, sx >> 16, sy >> 16);
     if (g_pgxp) {
         /* precise projection: true division instead of the UNR reciprocal,
-         * no rounding to whole pixels and no saturation. This is exactly
-         * where the hardware result degrades (very near the camera, where
-         * its divider overflows), so those vertices are kept; only points
-         * behind/at the eye or absurdly far off-screen stay untrusted. */
+         * no rounding to whole pixels and no saturation. It is kept in
+         * homogeneous form (x·z, y·z, z), which stays meaningful where the
+         * hardware result is garbage: very near the camera (its divider
+         * overflows), far off-screen (SXY saturate) and at or behind the
+         * eye (z <= 0), where the renderer clips the polygon instead. */
         double zf = (double)z / 4096.0;
         double xf = (double)x / (double)(1 << shift);
         double yf = (double)y / (double)(1 << shift);
         double hh = (double)(C[H] & 0xFFFF);
-        bool ok = zf >= 1.0;
-        double fx = (double)(int32_t)C[OFX] / 65536.0 + xf * hh / zf * g_ws_k;
-        double fy = (double)(int32_t)C[OFY] / 65536.0 + yf * hh / zf;
-        ok = ok && fx > -8192.0 && fx < 8192.0 && fy > -8192.0 && fy < 8192.0;
-        pgxp_gte_push((float)fx, (float)fy, (float)zf, D[SXY2], ok);
+        double hx = (double)(int32_t)C[OFX] / 65536.0 * zf + xf * hh * g_ws_k;
+        double hy = (double)(int32_t)C[OFY] / 65536.0 * zf + yf * hh;
+        if (zf == 0.0) /* w = 0 means unknown: put it just behind the eye */
+            zf = -1.0 / 4096.0;
+        pgxp_gte_push((float)hx, (float)hy, (float)zf, D[SXY2]);
     }
     if (last) {
         int64_t dq = (int64_t)q * (int16_t)C[DQA] + (int32_t)C[DQB];
@@ -367,7 +368,12 @@ void gte_command(CPU *c, uint32_t cmd) {
         int64_t x0 = lo16(D[SXY0]), y0 = hi16(D[SXY0]);
         int64_t x1 = lo16(D[SXY1]), y1 = hi16(D[SXY1]);
         int64_t x2 = lo16(D[SXY2]), y2 = hi16(D[SXY2]);
-        set_mac0(c, x0 * y1 + x1 * y2 + x2 * y0 - x0 * y2 - x1 * y0 - x2 * y1);
+        int64_t n = x0 * y1 + x1 * y2 + x2 * y0 - x0 * y2 - x1 * y0 - x2 * y1;
+        if (g_pgxp) {
+            const uint32_t sxy[3] = {D[SXY0], D[SXY1], D[SXY2]};
+            n = pgxp_nclip(n, sxy);
+        }
+        set_mac0(c, n);
         break;
     }
     case 0x0C: { /* OP (outer product) */

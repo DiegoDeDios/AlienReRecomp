@@ -16,10 +16,17 @@
 #include <stdint.h>
 
 typedef struct PgxpVtx {
-    float x, y;    /* precise screen coordinates (same space as SXY) */
-    float z;       /* depth (> 0), 0 = unknown */
+    /* homogeneous screen position: the vertex projects to (x / w, y / w),
+     * the space of SXY. w is the view depth; it is <= 0 at or behind the
+     * camera, where the GTE's own result is clamped garbage. w = 0 marks
+     * an unknown entry. */
+    float x, y, w;
     uint32_t raw;  /* the packed SXY value this entry describes */
 } PgxpVtx;
+
+/* nearest depth at which a projection is used as a screen position; the
+ * renderer clips polygons with vertices nearer than this */
+#define PGXP_NEAR 1.0f
 
 extern bool g_pgxp;
 
@@ -29,11 +36,27 @@ extern bool g_pgxp;
 void pgxp_reset(void);
 
 /* GTE side */
-void pgxp_gte_push(float x, float y, float z, uint32_t raw, bool valid);
+void pgxp_gte_push(float x, float y, float w, uint32_t raw);
 void pgxp_gte_set(int reg, const PgxpVtx *v);
+/* NCLIP of SXY0..SXY2 with the integer result `n`, corrected (see pgxp.c) */
+int64_t pgxp_nclip(int64_t n, const uint32_t sxy[3]);
 
-/* lookup for the GPU: precise vertex for a packet word read from `addr` */
+/* lookup for the GPU: the tracked projection of a packet word read from
+ * `addr` (anywhere relative to the camera) */
 bool pgxp_lookup(uint32_t addr, uint32_t word, PgxpVtx *out);
+
+/* screen position of a tracked projection, if it is in front of the camera
+ * and not absurdly far off-screen */
+static inline bool pgxp_screen(const PgxpVtx *v, float *x, float *y) {
+    if (!(v->w >= PGXP_NEAR))
+        return false;
+    float sx = v->x / v->w, sy = v->y / v->w;
+    if (!(sx > -8192.0f && sx < 8192.0f && sy > -8192.0f && sy < 8192.0f))
+        return false;
+    *x = sx;
+    *y = sy;
+    return true;
+}
 
 /* hooks used by the recompiled code (see recomp.h) */
 void pgxp_mfc2(int rt, int rd);
