@@ -204,6 +204,12 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   counter). Demo playback (`0x800A48C4` set) uses recorded steps instead.
   While the word at `0x800A4A14` is non-zero it first calls `VSync(3)`,
   capping the game at 20 fps.
+* Explosion darkening: `0x8004F50C`, called every frame in game, moves the
+  intensity byte `0x800A488A` towards the target `0x800A488B` while the timer
+  `0x800A488C` runs (set by `0x8004F4BC(timer, target)`), then back to 0. While it is
+  non-zero, `0x80064F50` draws a black semi-transparent 384×240 rect and
+  `0x80065038` draws the displayed frame over it as two 192-wide 15-bit
+  textured rects, with the intensity as their colour (both in OT slot 0).
 * Level sections: a trigger (e.g. a terminal by a door) starts
   loading the next section in the background through a state machine at
   `0x80075A78` on `0x800A4A14`: 1 starts the load (`0x80081D8C`, section

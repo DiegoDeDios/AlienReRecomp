@@ -161,7 +161,29 @@ static void unpack_color(uint32_t w, GVtx *v) {
  * xs/ys are raw packet coordinates (without the drawing offset). */
 #define WS_OVERLAY_SLOTS 16
 
-static uint32_t ws_classify(const int32_t *xs, const int32_t *ys, int n) {
+/* a solid colour over the whole screen (e.g. a fade) has no shape to keep */
+static bool ws_covers_screen(const int32_t *xs, const int32_t *ys, int n) {
+    int32_t x1 = xs[0], x2 = xs[0], y1 = ys[0], y2 = ys[0];
+    for (int i = 1; i < n; i++) {
+        if (xs[i] < x1) x1 = xs[i];
+        if (xs[i] > x2) x2 = xs[i];
+        if (ys[i] < y1) y1 = ys[i];
+        if (ys[i] > y2) y2 = ys[i];
+    }
+    return x1 <= 0 && y1 <= 0 && x2 >= S.area_x2 - S.area_x1 &&
+           y2 >= S.area_y2 - S.area_y1;
+}
+
+/* a rect copying the displayed frame back to the same screen position (the
+ * explosion darkening, 0x80065038): that frame is already wide */
+static bool ws_frame_copy(const GVtx *v) {
+    if (((S.tpage >> 7) & 3) != 2) /* frames are 15-bit */
+        return false;
+    int sx = (S.tpage & 0xF) * 64 + v->u, sy = ((S.tpage >> 4) & 1) * 256 + v->v;
+    return sx - D.disp_x == v->x - S.off_x && sy - D.disp_y == v->y - S.off_y;
+}
+
+static uint32_t ws_classify(const int32_t *xs, const int32_t *ys, int n, bool solid) {
     if (!g_ws_enabled)
         return 0;
     bool overlay = g_ot_slot < WS_OVERLAY_SLOTS;
@@ -177,6 +199,8 @@ static uint32_t ws_classify(const int32_t *xs, const int32_t *ys, int n) {
     }
     if (!g_ws_wide_display)
         return 0; /* 2D-only screen shown at 4:3: draw it untouched */
+    if (solid && ws_covers_screen(xs, ys, n))
+        return 0;
     S.ws_anchor = (float)(S.area_x1 + S.area_x2 + 1) * 0.5f;
     return PRIM_WS_2D;
 }
@@ -261,7 +285,7 @@ static void draw_polygon(const uint32_t *w) {
             int32_t xs[4], ys[4];
             for (int k = 0; k < nv; k++)
                 xs[k] = v[k].x - S.off_x, ys[k] = v[k].y - S.off_y;
-            flags |= ws_classify(xs, ys, nv);
+            flags |= ws_classify(xs, ys, nv, !tex);
         }
     }
     g_gpu_backend->triangle(&S, v, flags, clut, tpage);
@@ -315,7 +339,8 @@ static void draw_rect(const uint32_t *w) {
                          v.x - S.off_x + wd};
         int32_t ys[4] = {v.y - S.off_y, v.y - S.off_y, v.y - S.off_y + ht,
                          v.y - S.off_y + ht};
-        flags |= ws_classify(xs, ys, 4);
+        if (!tex || !ws_frame_copy(&v))
+            flags |= ws_classify(xs, ys, 4, !tex);
     }
     if (wd && ht)
         g_gpu_backend->rect(&S, &v, wd, ht, flags, clut);
@@ -346,7 +371,7 @@ static void draw_line_cmd(const uint32_t *w) {
     if (g_ws_enabled) {
         int32_t xs[2] = {a.x - S.off_x, b.x - S.off_x};
         int32_t ys[2] = {a.y - S.off_y, b.y - S.off_y};
-        flags |= ws_classify(xs, ys, 2);
+        flags |= ws_classify(xs, ys, 2, false);
     }
     g_gpu_backend->line(&S, &a, &b, flags);
     g_line_last = b;
