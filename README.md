@@ -180,6 +180,10 @@ What has been revealed lasts until you quit the game. On a controller, press
 **Select + D-pad down**. The key can be changed on the **Controls** page, which
 can also assign the map to a single controller button.
 
+| The game | The map at the same moment |
+| --- | --- |
+| ![Ripley in a corridor between two rooms](docs/media/map_game.jpg) | ![The two rooms visited so far as green outlines, with a white triangle on Ripley's position](docs/media/map.jpg) |
+
 ### Quick Save
 
 The original only saves at the save stations, and loading one puts you back
