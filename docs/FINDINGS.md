@@ -210,6 +210,8 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   non-zero, `0x80064F50` draws a black semi-transparent 384×240 rect and
   `0x80065038` draws the displayed frame over it as two 192-wide 15-bit
   textured rects, with the intensity as their colour (both in OT slot 0).
+* Cutscene letterbox: two solid black 384-wide quads in OT slot 1, at
+  y = 0..46 and y = 194..240 (seen in the opening of level index 1).
 * Level sections: a trigger (e.g. a terminal by a door) starts
   loading the next section in the background through a state machine at
   `0x80075A78` on `0x800A4A14`: 1 starts the load (`0x80081D8C`, section

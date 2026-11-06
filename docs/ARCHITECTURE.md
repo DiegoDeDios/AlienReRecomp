@@ -194,9 +194,10 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   — unless every vertex is an exact GTE projection (true near-camera 3D).
   Matching vertices against GTE outputs alone is not reliable here: the
   hand-written renderer clips/subdivides near polygons in screen space.
-  Two kinds of overlay are left unsquashed: solid colours covering the whole
-  screen (fades) and rectangles copying the displayed frame back to the same
-  position (the explosion darkening), since that frame is already wide.
+  Two kinds of overlay are left unsquashed: solid colours across the whole
+  width (fades, cutscene letterbox bars) and rectangles copying the displayed
+  frame back to the same position (the explosion darkening), since that
+  frame is already wide.
 * **Display aspect per frame**: the window is only shown wide while 3D is
   being drawn; pure 2D screens (loading screens, bitmaps) and FMV stay 4:3,
   pillarboxed.

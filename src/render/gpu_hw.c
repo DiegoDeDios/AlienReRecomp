@@ -520,7 +520,7 @@ static void set_vertex(HwVertex *o, const GVtx *v, uint32_t info0,
  * applied to the original (unscaled) span: otherwise near-camera polygons
  * that the PS1 discards would be drawn as long stretched "explosions". */
 static inline int span_limit_x(uint32_t flags) {
-    if (g_ws_enabled && !(flags & (PRIM_WS_2D | PRIM_WS_SPRITE)))
+    if (g_ws_enabled && !(flags & (PRIM_WS_2D | PRIM_WS_SPRITE | PRIM_WS_FULL)))
         return (int)(1024.0f * g_ws_k);
     return 1024;
 }
@@ -655,6 +655,10 @@ static void hw_triangle(const GpuState *s, const GVtx v[3], uint32_t flags,
     for (int i = 0; i < 3; i++) {
         set_vertex(&hv[i], &v[i], info0, clut, tw, flags & PRIM_SHADED, &v[0]);
         hv[i].x = ws_x(s, flags, hv[i].x);
+        if (flags & PRIM_WS_FULL) {
+            hv[i].x -= 0.5f;
+            hv[i].y -= 0.5f;
+        }
         if (all_precise)
             hv[i].w = persp_w(v[i].fz);
     }
@@ -676,7 +680,8 @@ static void hw_rect(const GpuState *s, const GVtx *v, int w, int h,
     }
     uint32_t info0 = make_info0(tpage, flags, s);
     uint32_t tw = texwin(s);
-    float x0 = (float)v->x + 0.5f, y0 = (float)v->y + 0.5f;
+    float bias = (flags & PRIM_WS_FULL) ? 0.0f : 0.5f;
+    float x0 = (float)v->x + bias, y0 = (float)v->y + bias;
     float x1 = x0 + (float)w, y1 = y0 + (float)h;
     x0 = ws_x(s, flags, x0);
     x1 = ws_x(s, flags, x1);
