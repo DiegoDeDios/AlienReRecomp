@@ -1,38 +1,43 @@
-# Pre-releases: test builds of a feature branch, published before its pull
-# request is merged.
+# Pre-releases: every push to a feature/ or fix/ branch publishes a test build
+# of its head, so people can try it before the pull request is merged. Other
+# branches can run it by hand (Actions > Pre-release > Run workflow).
 #
-# Run it on the branch: Actions > Pre-release > Run workflow, "Use workflow
-# from" the branch (or `gh workflow run pre-release.yml --ref BRANCH`). The
-# branch must contain main (merge main into it first; its pull request needs
-# that anyway) and raise PORT_VERSION above main's to a version that is not
-# released yet (tools/check_version_bump.sh), so a pre-release previews the
-# version its pull request will release.
+# Each branch has one pre-release, tagged v<PORT_VERSION>-pre-<hash of the
+# branch name> (tools/prerelease_id.sh), so branches at the same version do not
+# clash and a new push replaces the branch's previous one. Deleting the branch
+# deletes its pre-release.
 #
-# It builds the branch's head like release.yml, with the version marked
-# <PORT_VERSION>-pre (package names, launcher, quick saves), tags that commit
-# v<PORT_VERSION>-pre and publishes the GitHub pre-release
-# "ARR v<PORT_VERSION>-pre" with the three packages, the branch's commits and
-# packaging/RELEASE_NOTES.md. Running it again for the same version replaces
-# that pre-release and moves its tag to the branch's new head. The release
-# of the merged version (v<PORT_VERSION>, by release.yml) is not affected.
+# A branch that has not raised PORT_VERSION above main's, to a version not
+# released yet (tools/check_version_bump.sh), gets no pre-release until it does.
+# The packages and the launcher show the version as <PORT_VERSION>-pre.
 name: Pre-release
 
 on:
   workflow_dispatch:
+  push:
+    branches: ["feature/**", "fix/**"]
+  delete:
 
 permissions:
   contents: read
 
-# one pre-release at a time per branch
+# a new push or the branch's deletion replaces a running pre-release
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'delete' && github.event.ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
+  # the job names differ from release.yml's: push runs report on the branch's
+  # commits, where "Build (macOS)" etc. are required checks of main
+
   version:
-    name: Version
+    name: Pre-release version
+    if: github.event_name != 'delete'
     runs-on: ubuntu-24.04
     outputs:
+      publish: ${{ steps.v.outputs.publish }}
       version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -44,20 +49,26 @@ jobs:
             echo "::error::run this on a feature branch (main is released by release.yml)"
             exit 1
           fi
-          if ! git merge-base --is-ancestor origin/main HEAD; then
-            echo "::error::$GITHUB_REF_NAME does not contain main: merge main into it first"
-            exit 1
+          if ! tools/check_version_bump.sh origin/main > /dev/null 2> reason.txt; then
+            echo "::notice::No pre-release for $GITHUB_REF_NAME: $(sed 's/^error: //' reason.txt)"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          tools/check_version_bump.sh origin/main
           version=$(sed -n 's/^#define PORT_VERSION "\(.*\)"/\1/p' src/platform/launcher.h)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Pre-release v$version-pre from $GITHUB_REF_NAME at $GITHUB_SHA"
+          tag="v$version-pre-$(tools/prerelease_id.sh "$GITHUB_REF_NAME")"
+          {
+            echo "publish=true"
+            echo "version=$version"
+            echo "tag=$tag"
+          } >> "$GITHUB_OUTPUT"
+          echo "Pre-release $tag from $GITHUB_REF_NAME at $GITHUB_SHA"
 
   # the builds are release.yml's, plus the -pre version mark
 
   macos:
-    name: Build (macOS)
+    name: Pre-release build (macOS)
     needs: version
+    if: needs.version.outputs.publish == 'true'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v7
@@ -76,8 +87,9 @@ jobs:
           retention-days: 14
 
   windows:
-    name: Build (Windows)
+    name: Pre-release build (Windows)
     needs: version
+    if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -96,8 +108,9 @@ jobs:
           retention-days: 14
 
   linux:
-    name: Build (Linux)
+    name: Pre-release build (Linux)
     needs: version
+    if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     # Ubuntu 22.04 (glibc 2.35) so the program also runs on older systems
     container: ubuntu:22.04
@@ -118,7 +131,7 @@ jobs:
           retention-days: 14
 
   pre-release:
-    name: Pre-release
+    name: Publish pre-release
     needs: [version, macos, windows, linux]
     runs-on: ubuntu-24.04
     permissions:
@@ -146,17 +159,29 @@ jobs:
       - name: Tag and publish
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v${{ needs.version.outputs.version }}-pre
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
-          # an earlier pre-release of this version is replaced
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release delete "$TAG" --yes
-          fi
+          # also covers an earlier version of this branch
+          tools/delete_prereleases.sh "$GITHUB_REF_NAME"
           # pushed with the workflow's token, so it starts no workflow
           git -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
               tag -f -a "$TAG" -m "ARR $TAG" "$GITHUB_SHA"
           git push --force origin "refs/tags/$TAG"
           gh release create "$TAG" --verify-tag --prerelease --latest=false \
-            --title "ARR $TAG" --notes-file "$RUNNER_TEMP/notes.md" \
+            --title "ARR $TAG ($GITHUB_REF_NAME)" --notes-file "$RUNNER_TEMP/notes.md" \
             dist/macos/*.zip dist/windows/*.zip dist/linux/*.tar.gz
+
+  cleanup:
+    name: Delete pre-release
+    if: github.event_name == 'delete' && github.event.ref_type == 'branch'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # the tag and the pre-release
+    steps:
+      - uses: actions/checkout@v7
+      - name: Delete the branch's pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.ref }}
+        run: tools/delete_prereleases.sh "$BRANCH"
