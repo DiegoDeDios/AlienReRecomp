@@ -1783,7 +1783,7 @@ static void draw_map(ImDrawList *dl, ImVec2 S, const AutomapView *m) {
         const AutomapSeg &s = m->segs[i];
         dl->AddLine(ImVec2(c.x + (s.x0 - m->x) * scale, c.y + (s.z0 - m->z) * scale),
                     ImVec2(c.x + (s.x1 - m->x) * scale, c.y + (s.z1 - m->z) * scale),
-                    IM_COL32(230, 0, 0, 255), 1.5f * U);
+                    C_ACCENT, 1.5f * U);
     }
     /* the player: an arrow in the walking direction */
     float fx = -sinf(m->yaw), fy = cosf(m->yaw), r = 16 * U;
