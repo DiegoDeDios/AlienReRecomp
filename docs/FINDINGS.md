@@ -212,6 +212,11 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   textured rects, with the intensity as their colour (both in OT slot 0).
 * Cutscene letterbox: two solid black 384-wide quads in OT slot 1, at
   y = 0..46 and y = 194..240 (seen in the opening of level index 1).
+* Underwater ripple: while `0x800A8758` points to a table (0 on land), the
+  world renderers add a word from it to each projected SXY, indexed by the
+  point's y (`& 0x1FF`), e.g. at `0x800A5E84`. Each word holds an (x, y) offset
+  of a few pixels; the table is rebuilt every frame. The weapon is drawn in OT
+  slots below 16 (slot 9 seen).
 * Level sections: a trigger (e.g. a terminal by a door) starts
   loading the next section in the background through a state machine at
   `0x80075A78` on `0x800A4A14`: 1 starts the load (`0x80081D8C`, section

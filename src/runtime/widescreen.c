@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "psx.h"
 #include "savestate.h"
 
 bool g_ws_enabled;
@@ -53,8 +54,7 @@ static inline uint32_t hash(uint32_t k) {
     return k & (SET_SIZE - 1);
 }
 
-void ws_record(int32_t x, int32_t y) {
-    uint32_t k = key(x, y);
+static void record_key(uint32_t k) {
     uint32_t *s = g_set[g_cur];
     if (g_count[g_cur] > SET_SIZE * 3 / 4)
         return; /* full: very unusual, extra points just go unrecorded */
@@ -77,6 +77,21 @@ static bool lookup(int g, uint32_t k) {
         if (s[h] == EMPTY)
             return false;
     }
+}
+
+/* Underwater the game adds a ripple to each point right after projecting it,
+ * from a table of per-line (x, y) offsets rebuilt every frame (see FINDINGS.md).
+ * The moved point must count as projected too, or the weapon, which is drawn in
+ * the overlay slots, is taken for 2D. */
+#define RIPPLE_TABLE_PTR 0x800A8758u
+#define RAM_SIZE 0x200000u
+
+void ws_record(int32_t x, int32_t y) {
+    uint32_t k = key(x, y);
+    record_key(k);
+    uint32_t table = mem_r32(RIPPLE_TABLE_PTR) & 0x1FFFFFFFu;
+    if (table && table < RAM_SIZE)
+        record_key(k + mem_r32(table + (((uint32_t)y & 0x1FF) << 2)));
 }
 
 bool ws_projected_exact(int32_t x, int32_t y) {
