@@ -573,6 +573,7 @@ void ALIEN_80020848(CPU *c) {
 #define POLY_FT4       0x2Cu       /* xy words 2, 4, 6, 8 */
 #define LINE_F2        0x40u       /* xy words 2, 3 */
 #define CROSSHAIR_X_GP 16856       /* smoothed x of the projected aim point */
+#define TRACKER_INSET  8           /* looks better a little in from the edge */
 
 static void shift_packets(uint32_t from, uint32_t to, int left_dx, int right_dx) {
     for (uint32_t p = from; p < to; p += ((mem_r32(p) >> 24) + 1) * 4) {
@@ -589,22 +590,22 @@ static void shift_packets(uint32_t from, uint32_t to, int left_dx, int right_dx)
 }
 
 /* run a HUD routine and send what it drew to the nearest screen edge */
-static void draw_at_edges(CPU *c, void (*draw)(CPU *)) {
+static void draw_at_edges(CPU *c, void (*draw)(CPU *), int left_inset) {
     uint32_t from = mem_r32(PACKET_PTR);
     draw(c);
     if (!g_ws_wide_display)
         return;
     float k = g_ws_k;
-    int left = (int)lroundf(-HUD_MIDDLE * (1.0f - k) / k);
+    int left = (int)lroundf(-HUD_MIDDLE * (1.0f - k) / k) + left_inset;
     int right = (int)lroundf((DISPLAY_W - HUD_MIDDLE) / k - HUD_MIDDLE);
     shift_packets(from, mem_r32(PACKET_PTR), left, right);
 }
 
 void ALIEN_80033A9C__orig(CPU *c);
-void ALIEN_80033A9C(CPU *c) { draw_at_edges(c, ALIEN_80033A9C__orig); }
+void ALIEN_80033A9C(CPU *c) { draw_at_edges(c, ALIEN_80033A9C__orig, 0); }
 
 void ALIEN_800343FC__orig(CPU *c);
-void ALIEN_800343FC(CPU *c) { draw_at_edges(c, ALIEN_800343FC__orig); }
+void ALIEN_800343FC(CPU *c) { draw_at_edges(c, ALIEN_800343FC__orig, TRACKER_INSET); }
 
 /* The crosshair is at a GTE projection, already wide, so only its shape may be
  * squashed: the shift cancels what the squash does to its position. */
