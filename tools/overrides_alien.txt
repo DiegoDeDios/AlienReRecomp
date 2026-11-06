@@ -1,6 +1,7 @@
 # Functions replaced by native code in src/runtime/native.c
 80082c4c  # libetc VSync wait helper (v_wait)
 80082ad4 wrap  # libetc VSync: save states (quick save / load) are taken on entry
+80030e68 wrap  # end of frame: wait for the refresh (adaptive CPU budget)
 800a81bc wrap  # screen-space quad subdivision (skipped for PGXP-precise quads)
 8005e8e8 wrap  # player movement speed helper (sprint)
 80020350 wrap  # main: adjust option defaults before the game starts

@@ -237,6 +237,19 @@ as tested.
 * The emulated CPU runs at 300% by default (`--cpu-speed`), which keeps heavy
   scenes at 60 fps. This is safe because the game scales its logic by the
   number of vblanks elapsed since the previous frame.
+* That setting is a floor: the budget adapts to the game
+  (`src/runtime/native.c`). The frame routine ends by waiting for the next
+  refresh (`0x80030E68`, wrapped), so the instructions between two of those
+  calls are the frame's real work. The budget follows the recent peak plus 25%,
+  rising at once and falling one step per second, up to 800%. At 100% it stays
+  off, for the original behaviour. A frame over budget misses the refresh and
+  halves the frame rate; a higher budget costs host time.
+* A host too slow for the boost would run the game in slow motion, so the frame
+  loop reports the time each frame took before presenting. After 30 frames in a
+  row over 14 ms while boosted, the budget drops a step and that becomes the
+  ceiling; the ceiling rises one step after 30 s without trouble. The budget
+  never drops below the setting, so a slow host behaves as it did with a fixed
+  budget.
 * libetc's `VSync` wait helper is replaced natively (`src/runtime/native.c`,
   listed in `tools/overrides_*.txt`): it fast-forwards emulated time to the
   next event instead of spinning, so its iteration-count timeout cannot fire

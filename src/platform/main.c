@@ -82,6 +82,7 @@ static bool g_gpu_ok;
 static SDL_AudioStream *g_audio;
 static SDL_Gamepad *g_pad;
 static uint64_t g_next_frame_ns;
+static uint64_t g_frame_end_ns; /* when the last frame was presented and paced */
 static bool g_vsync_paced;  /* display refresh ~= PS1 refresh: let vsync pace */
 static uint64_t g_frame_ns = (uint64_t)FRAME_NS; /* host time per emulated frame */
 static bool g_quit;
@@ -573,7 +574,7 @@ static void apply_live(void) {
         LOGI("overlay", "enemy damage: %s", buf);
     }
     if (c->cpu_pct != a->cpu_pct) {
-        g_cycle_scale = cycle_scale_for(c->cpu_pct);
+        cpu_budget_configure(cycle_scale_for(c->cpu_pct));
         LOGI("overlay", "emulated CPU speed %d%%", c->cpu_pct);
     }
     if (c->mouse_look != a->mouse_look || c->mouse_sens != a->mouse_sens) {
@@ -959,6 +960,9 @@ void platform_vblank(void) {
     /* a quick save / load message over the game */
     if (g_gpu_ok)
         render_set_overlay(toast_frame() ? toast_render : NULL);
+    uint64_t work_end = SDL_GetTicksNS();
+    if (g_frame_end_ns)
+        cpu_budget_host_time(work_end - g_frame_end_ns);
     render_present();
     audio_rate_control();
     /* pacing: a timer caps the frame rate (at the display refresh when it is
@@ -977,6 +981,7 @@ void platform_vblank(void) {
     } else if (now - g_next_frame_ns > 100000000ull) {
         g_next_frame_ns = now; /* fell behind: resync */
     }
+    g_frame_end_ns = SDL_GetTicksNS();
 }
 
 static void vblank_event(int64_t now, int64_t late) {
@@ -1276,7 +1281,7 @@ static void apply_settings(const Settings *c) {
     g_sprint_pct = c->sprint ? c->sprint_pct : 100;
     g_infinite_flashlight = c->infinite_flashlight;
     g_fov_deg = c->fov;
-    g_cycle_scale = cycle_scale_for(c->cpu_pct);
+    cpu_budget_configure(cycle_scale_for(c->cpu_pct));
     g_enemy_damage_pct = c->enemy_damage_pct;
     memcpy(g_enemy_damage_group_pct, c->enemy_damage_group_pct, sizeof g_enemy_damage_group_pct);
     apply_camera(c);

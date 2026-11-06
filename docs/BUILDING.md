@@ -168,7 +168,7 @@ Options override `config.ini` for one run; most are for testing.
 | `--aspect W:H` | display aspect: `16:9` (default), `16:10`, `21:9`, or `4:3` for the original look |
 | `--fov DEG` | horizontal field of view in degrees, up to 100 (default `original`: 67 at 16:9, 53 at 4:3) |
 | `--scale N` | internal resolution multiplier for the GPU renderer (default 4) |
-| `--cpu-speed PCT` | emulated CPU speed (default 300 = steady 60 fps; 100 = original hardware) |
+| `--cpu-speed PCT` | emulated CPU speed, raised automatically in busy scenes (default 300 = steady 60 fps; 100 = original hardware, never raised) |
 | `--no-vsync` | present without vsync (lowest latency, may tear) |
 | `--no-pgxp` | original PS1 geometry: integer vertices and affine (warping) textures |
 | `--sprint-speed PCT` | player speed while sprinting (default 190; 100 turns sprint off) |

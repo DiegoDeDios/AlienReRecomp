@@ -940,7 +940,8 @@ void draw_settings(ImDrawList *dl) {
             ci = i;
     if (choice("Frame rate boost", &ci, cpus, 5,
                "Emulated CPU speed. On original hardware busy scenes drop to 20-30 fps; 300% "
-               "keeps a steady 60 fps. The game's timing is unaffected.")) {
+               "keeps a steady 60 fps, with more in busy scenes if your computer can afford "
+               "it. 100% is never raised. The game's timing is unaffected.")) {
         c->cpu_pct = cpv[ci];
         mark(&c->cpu_pct);
     }
