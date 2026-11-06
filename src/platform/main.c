@@ -289,6 +289,26 @@ static bool overlay_combo(void) {
     return g_combo_latched;
 }
 
+/* Select + D-pad down on the controller toggles the map: every standard button
+ * already has a job. As with the overlay's combo, each stays masked from the
+ * game until released. */
+static bool map_combo(bool *pressed) {
+    static bool latched;
+    if (!g_pad) {
+        latched = false;
+        return false;
+    }
+    int sel = g_cfg.pad[ACT_SELECT] >= 0 ? g_cfg.pad[ACT_SELECT] : SDL_GAMEPAD_BUTTON_BACK;
+    int down = g_cfg.pad[ACT_DPAD_DOWN] >= 0 ? g_cfg.pad[ACT_DPAD_DOWN] : SDL_GAMEPAD_BUTTON_DPAD_DOWN;
+    bool a = input_pad_held(g_pad, sel), b = input_pad_held(g_pad, down);
+    *pressed |= a && b;
+    if (a && b)
+        latched = true;
+    else if (!a && !b)
+        latched = false;
+    return latched;
+}
+
 static void poll_input(void) {
     bool sprint = false, map = false;
     uint16_t b = scripted_buttons(&sprint, &map);
@@ -335,6 +355,8 @@ static void poll_input(void) {
         input_read(&g_cfg, g_pad, g_mouse_captured ? g_mouse_buttons : 0, &in);
         if (overlay_combo())
             in.buttons &= (uint16_t)~(PAD_SELECT | PAD_START);
+        if (map_combo(&map))
+            in.buttons &= (uint16_t)~(PAD_SELECT | PAD_DOWN);
         if (g_input_hold) {
             /* the key or button that closed the overlay is still down */
             if (in.buttons)

@@ -357,6 +357,9 @@ player is in play, so it closes during the pause menu, cutscenes and demos. The
 masks live in the host only, not in save states or memory cards: they last until
 the program exits and a quick load does not take rooms back.
 
+On a controller Select + D-pad down toggles it, since every standard button has
+a job; like the overlay's combo, both stay masked from the game until released.
+
 Sections have their own coordinates and nothing found links them, so the map
 shows one section. The drawing is a Dear ImGui draw list in the toast's overlay
 pass (`launcher.cpp`), in window space, so widescreen does not affect it.

@@ -175,8 +175,9 @@ Press **M** for a Doom-style map of the current part of the level: green wall
 outlines on black, with an arrow for you, following you as you move. Rooms
 appear once you have been in them, and the game keeps running while it is open.
 It shows the floor you are on, and closes when you pause or a cutscene starts.
-What has been revealed lasts until you quit the game. The key can be changed on
-the **Controls** page, which can also assign it to a controller button.
+What has been revealed lasts until you quit the game. On a controller, press
+**Select + D-pad down**. The key can be changed on the **Controls** page, which
+can also assign the map to a single controller button.
 
 ### Quick Save
 
