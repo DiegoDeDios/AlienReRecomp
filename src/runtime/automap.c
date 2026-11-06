@@ -13,7 +13,6 @@
 #define PLAYER_PTR     0x800A49E8u
 #define DEMO_PLAYBACK  0x800A48C4u
 #define RAM_SIZE       0x200000u
-#define AUTOMAP_PI     3.14159265f
 
 #define MAP_PLANES     16
 #define MAP_NODES      20          /* the first hull: the cleanest outline */
@@ -264,8 +263,6 @@ bool automap_view(AutomapView *view) {
         g_slice_y = y;
         slice_rooms(seen, y - SLICE_ABOVE);
     }
-    uint32_t p = mem_r32(PLAYER_PTR);
-    *view = (AutomapView){g_segs, g_nsegs, x, z,
-                          (float)mem_r16(p + 0x3E) * 2.0f * AUTOMAP_PI / FIXED_ONE};
+    *view = (AutomapView){g_segs, g_nsegs, x, z};
     return true;
 }

@@ -1785,17 +1785,10 @@ static void draw_map(ImDrawList *dl, ImVec2 S, const AutomapView *m) {
                     ImVec2(c.x + (s.x1 - m->x) * scale, c.y + (s.z1 - m->z) * scale),
                     C_ACCENT, 1.5f * U);
     }
-    /* the player: an arrow in the walking direction */
-    float fx = -sinf(m->yaw), fy = cosf(m->yaw), r = 16 * U;
-    auto at = [&](float along, float across) {
-        return ImVec2(c.x + (fx * along - fy * across) * r, c.y + (fy * along + fx * across) * r);
-    };
-    ImU32 white = IM_COL32(255, 255, 255, 255);
-    dl->AddLine(at(-1, 0), at(1, 0), white, 1.5f * U);
-    dl->AddLine(at(1, 0), at(0.35f, 0.45f), white, 1.5f * U);
-    dl->AddLine(at(1, 0), at(0.35f, -0.45f), white, 1.5f * U);
-    dl->AddLine(at(-1, 0), at(-1.3f, 0.35f), white, 1.5f * U);
-    dl->AddLine(at(-1, 0), at(-1.3f, -0.35f), white, 1.5f * U);
+    /* the player: a fixed marker whose tip points at their position */
+    float w = 9 * U, h = 16 * U;
+    dl->AddTriangleFilled(ImVec2(c.x - w, c.y - h), ImVec2(c.x + w, c.y - h), c,
+                          IM_COL32(255, 255, 255, 255));
 }
 
 extern "C" bool toast_frame(const AutomapView *map) {

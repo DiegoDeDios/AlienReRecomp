@@ -9,8 +9,7 @@
 extern "C" {
 #endif
 
-/* World units: x to the right of the map, z down it, so the player walks up
- * the map at yaw 2048. */
+/* World units: x to the right of the map, z down it. */
 typedef struct AutomapSeg {
     float x0, z0, x1, z1;
 } AutomapSeg;
@@ -19,7 +18,6 @@ typedef struct AutomapView {
     const AutomapSeg *segs;
     int nsegs;
     float x, z;  /* player */
-    float yaw;   /* radians; walking direction is (-sin yaw, cos yaw) */
 } AutomapView;
 
 /* the game drew its HUD this frame: the player is in play */

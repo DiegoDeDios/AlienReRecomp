@@ -172,8 +172,9 @@ The port reads the controls right when the game needs them:
 ### Map
 
 Press **M** for a Doom-style map of the current part of the level: green wall
-outlines on black, with an arrow for you, following you as you move. Rooms
-appear once you have been in them, and the game keeps running while it is open.
+outlines on black, with a triangle pointing at where you are, following you as
+you move. Rooms appear once you have been in them, and the game keeps running
+while it is open.
 It shows the floor you are on, and closes when you pause or a cutscene starts.
 What has been revealed lasts until you quit the game. On a controller, press
 **Select + D-pad down**. The key can be changed on the **Controls** page, which
