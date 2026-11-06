@@ -573,8 +573,9 @@ void ALIEN_80020848(CPU *c) {
 #define POLY_FT4       0x2Cu       /* xy words 2, 4, 6, 8 */
 #define LINE_F2        0x40u       /* xy words 2, 3 */
 #define CROSSHAIR_X_GP 16856       /* smoothed x of the projected aim point */
+#define TRACKER_DOWN   4           /* bottom level with the ammo panel's, y 224 */
 
-static void shift_packets(uint32_t from, uint32_t to, int left_dx, int right_dx) {
+static void shift_packets(uint32_t from, uint32_t to, int left_dx, int right_dx, int dy) {
     for (uint32_t p = from; p < to; p += ((mem_r32(p) >> 24) + 1) * 4) {
         uint32_t cmd = (mem_r32(p + 4) >> 24) & 0xFC;
         if (cmd != POLY_FT4 && cmd != LINE_F2)
@@ -583,13 +584,14 @@ static void shift_packets(uint32_t from, uint32_t to, int left_dx, int right_dx)
         int dx = (int16_t)mem_r32(p + 8) < HUD_MIDDLE ? left_dx : right_dx;
         for (int i = 0; i < (quad ? 4 : 2); i++) {
             uint32_t a = p + 8 + (uint32_t)i * (quad ? 8 : 4), xy = mem_r32(a);
-            mem_w32(a, (xy & 0xFFFF0000u) | ((xy + (uint32_t)dx) & 0xFFFFu));
+            mem_w32(a, ((xy + ((uint32_t)dy << 16)) & 0xFFFF0000u) |
+                           ((xy + (uint32_t)dx) & 0xFFFFu));
         }
     }
 }
 
 /* run a HUD routine and send what it drew to the nearest screen edge */
-static void draw_at_edges(CPU *c, void (*draw)(CPU *)) {
+static void draw_at_edges(CPU *c, void (*draw)(CPU *), int dy) {
     uint32_t from = mem_r32(PACKET_PTR);
     draw(c);
     if (!g_ws_wide_display)
@@ -597,14 +599,14 @@ static void draw_at_edges(CPU *c, void (*draw)(CPU *)) {
     float k = g_ws_k;
     int left = (int)lroundf(-HUD_MIDDLE * (1.0f - k) / k);
     int right = (int)lroundf((DISPLAY_W - HUD_MIDDLE) / k - HUD_MIDDLE);
-    shift_packets(from, mem_r32(PACKET_PTR), left, right);
+    shift_packets(from, mem_r32(PACKET_PTR), left, right, dy);
 }
 
 void ALIEN_80033A9C__orig(CPU *c);
-void ALIEN_80033A9C(CPU *c) { draw_at_edges(c, ALIEN_80033A9C__orig); }
+void ALIEN_80033A9C(CPU *c) { draw_at_edges(c, ALIEN_80033A9C__orig, 0); }
 
 void ALIEN_800343FC__orig(CPU *c);
-void ALIEN_800343FC(CPU *c) { draw_at_edges(c, ALIEN_800343FC__orig); }
+void ALIEN_800343FC(CPU *c) { draw_at_edges(c, ALIEN_800343FC__orig, TRACKER_DOWN); }
 
 /* The crosshair is at a GTE projection, already wide, so only its shape may be
  * squashed: the shift cancels what the squash does to its position. */
@@ -616,5 +618,5 @@ void ALIEN_80034A50(CPU *c) {
         return;
     int x = (int16_t)mem_r16(c->r[28] + CROSSHAIR_X_GP);
     int dx = (int)lroundf((float)(x - HUD_MIDDLE) * (1.0f - g_ws_k) / g_ws_k);
-    shift_packets(from, mem_r32(PACKET_PTR), dx, dx);
+    shift_packets(from, mem_r32(PACKET_PTR), dx, dx, 0);
 }

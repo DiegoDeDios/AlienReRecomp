@@ -205,8 +205,9 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   `0x800343FC`) shift the x of the packets each one just built (the packet
   pointer is at `0x1F800044`), left of the middle towards the left edge and the
   rest towards the right, so the squash puts them at the same margins as at
-  4:3. The display shows 368 columns of the 384-wide buffer, so raw x 384 maps
-  to the right edge. Menus and text never pass through these routines.
+  4:3. The tracker also moves down 4 lines, level with the ammo panel. The
+  display shows 368 columns of the 384-wide buffer, so raw x 384 maps to the
+  right edge. Menus and text never pass through these routines.
 * **Crosshair**: `0x80034A50` places it with `RTPS`, so its position is already
   wide. A wrapper shifts its lines to cancel the squash on the position, and
   only its shape is squashed.
