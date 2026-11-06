@@ -10,13 +10,14 @@
 # "Build (Linux)") are required status checks of main, so nothing that
 # fails to build can be merged.
 #
-# Releases: every pull request raises PORT_VERSION in src/platform/
-# launcher.h (enforced by version-check.yml). When the merge reaches main
-# and v<PORT_VERSION> is not tagged yet, this workflow tags the commit and
-# creates a *draft* GitHub release "ARR v<PORT_VERSION>" with the three
-# packages, the notes from packaging/RELEASE_NOTES.md and the pull requests
-# since the last release; review and publish it by hand. Pushing a v* tag
-# by hand does the same for that commit (the tag must match PORT_VERSION).
+# Releases: each merged pull request gets the next version, the highest vX.Y.Z
+# tag with the patch number raised (tools/next_version.sh), stamped into the
+# build. This workflow tags the merge and creates a *draft* GitHub release
+# "ARR v<version>" with the three packages, the notes from
+# packaging/RELEASE_NOTES.md and the pull requests since the last release;
+# review and publish it by hand. A direct push to main releases nothing; running
+# this workflow by hand on main releases it. Pushing a vX.Y.Z tag by hand
+# releases that commit as that version, which is how to raise major or minor.
 # Pre-releases of feature branches (v*-pre-* tags) are made by pre-release.yml.
 name: Build and release
 
@@ -31,15 +32,19 @@ on:
 permissions:
   contents: read
 
-# a new push to a pull request replaces its running builds
+# a new push to a pull request replaces its running builds; main runs one at a
+# time, so two merges cannot take the same version
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   version:
     name: Version
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read # whether a push to main is a merge
     outputs:
       version: ${{ steps.v.outputs.version }}
       release: ${{ steps.v.outputs.release }}
@@ -49,26 +54,33 @@ jobs:
           fetch-depth: 0 # the existing tags
       - name: Version and whether to release it
         id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          version=$(sed -n 's/^#define PORT_VERSION "\(.*\)"/\1/p' src/platform/launcher.h)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          version=$(tools/next_version.sh)
           release=false
           case "$GITHUB_REF" in
           refs/heads/main)
-            if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
-              echo "::warning::v$version is already tagged, so this push is not released. Raise PORT_VERSION in src/platform/launcher.h."
-            else
+            if git tag --points-at HEAD | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::notice::this commit is already released"
+            elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
               release=true
+            elif [ "$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at)] | length')" != 0 ]; then
+              release=true
+            else
+              echo "::notice::direct push, not released"
             fi ;;
           refs/tags/v*)
-            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-              echo "::error::tag $GITHUB_REF_NAME does not match PORT_VERSION $version"
+            version=${GITHUB_REF_NAME#v}
+            if ! [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::tag $GITHUB_REF_NAME is not vMAJOR.MINOR.PATCH"
               exit 1
             fi
             release=true ;;
           esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "release=$release" >> "$GITHUB_OUTPUT"
-          echo "PORT_VERSION $version, release: $release"
+          echo "version $version, release: $release"
 
   macos:
     name: Build (macOS)
@@ -76,6 +88,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
+      - name: Stamp the version
+        run: sh tools/set_version.sh ${{ needs.version.outputs.version }}
       - name: Tools
         run: brew install ninja
       - name: Build AlienResurrection.app (universal)
@@ -92,6 +106,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - name: Stamp the version
+        run: sh tools/set_version.sh ${{ needs.version.outputs.version }}
       - name: Tools
         run: sudo apt-get update && sudo apt-get install -y mingw-w64 cmake ninja-build zip
       - name: Build AlienResurrection.exe (cross-compiled)
@@ -110,6 +126,8 @@ jobs:
     container: ubuntu:22.04
     steps:
       - uses: actions/checkout@v7
+      - name: Stamp the version
+        run: sh tools/set_version.sh ${{ needs.version.outputs.version }}
       - name: Tools and SDL3 build dependencies
         run: sh tools/linux/install_deps_ubuntu.sh
       - name: Build AlienResurrection (x86_64)
