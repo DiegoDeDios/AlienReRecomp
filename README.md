@@ -352,6 +352,13 @@ Yes: in **Settings** turn off Widescreen, Precision geometry, Responsive
 sticks, Sprint and Infinite flashlight, and set Internal resolution to 1x,
 Field of view to Original and Frame rate boost to Original (100%).
 
+#### Can I try changes before they are released?
+
+Yes: branches in progress are published as pre-releases, marked as such on the
+[releases page](https://github.com/DiegoDeDios/AlienReRecomp/releases). They
+may have new problems, and their quick saves do not carry over to the final
+release.
+
 #### Where do I report a bug?
 
 In the [issue tracker](https://github.com/DiegoDeDios/AlienReRecomp/issues).
