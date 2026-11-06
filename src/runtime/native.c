@@ -37,6 +37,93 @@ static void vsync_wait(CPU *c, uint32_t vcount_addr) {
 void ALIEN_80082C4C(CPU *c) { vsync_wait(c, 0x8009D240u); }
 void SLUS_800163D4(CPU *c) { vsync_wait(c, 0x8001F6C8u); }
 
+/* Adaptive CPU budget. The emulated CPU gets a fixed number of instructions per
+ * refresh (g_cycle_scale, the Frame rate boost setting), and a frame that uses
+ * more misses the refresh and halves the frame rate. The frame routine ends by
+ * waiting for the next refresh (0x80030E68, called at 0x8001FC64), so each frame's
+ * work is known there: the budget follows its recent peak with some margin,
+ * rising at once and falling slowly, never below the player's setting. A host
+ * too slow for a boosted frame caps the boost, or it would run in slow motion.
+ * Attract demos do not make this call and keep the setting. */
+#define FRAME_WAIT_RA      0x0001FC6Cu
+#define MIN_CYCLE_SCALE    4           /* 800%, the highest setting */
+#define NO_BOOST_SCALE     32          /* 100%, the original hardware */
+#define STEP_DOWN_FRAMES   60
+#define HOST_LIMIT_NS      14000000ull /* of the 16.7 ms frame; the rest presents */
+#define HOST_OVER_FRAMES   30          /* in a row, so a background hiccup does not count */
+#define HOST_RETRY_FRAMES  1800
+
+static uint32_t g_base_scale = 32 * 100 / 300;
+static uint32_t g_fastest_scale = MIN_CYCLE_SCALE;
+static int64_t g_frame_work_start = -1;
+static uint32_t g_peak_work;
+static int g_calm_frames, g_host_over, g_host_calm;
+
+void cpu_budget_configure(uint32_t scale) {
+    g_base_scale = g_cycle_scale = scale;
+    g_fastest_scale = MIN_CYCLE_SCALE;
+    g_peak_work = 0;
+    g_calm_frames = g_host_over = g_host_calm = 0;
+}
+
+static void cpu_budget_set(uint32_t scale) {
+    if (scale != g_cycle_scale)
+        LOGD("cpu", "budget: %u instructions per refresh",
+             (uint32_t)(PSX_NTSC_FRAME_CYCLES * 16 / scale));
+    g_cycle_scale = scale;
+}
+
+static void cpu_budget_frame_done(int64_t cycles) {
+    if (cycles < 0 || cycles > 8 * PSX_NTSC_FRAME_CYCLES) /* a save state was loaded */
+        return;
+    uint32_t work = (uint32_t)(cycles * 16 / g_cycle_scale);
+    g_peak_work -= g_peak_work / 64;
+    if (work > g_peak_work)
+        g_peak_work = work;
+    uint32_t wanted = g_base_scale;
+    uint32_t needed = g_peak_work + g_peak_work / 4;
+    if (needed > PSX_NTSC_FRAME_CYCLES * 16 / g_base_scale)
+        wanted = PSX_NTSC_FRAME_CYCLES * 16 / needed;
+    if (wanted < g_fastest_scale)
+        wanted = g_fastest_scale;
+    if (wanted < g_cycle_scale) {
+        cpu_budget_set(wanted);
+        g_calm_frames = 0;
+    } else if (wanted > g_cycle_scale && ++g_calm_frames >= STEP_DOWN_FRAMES) {
+        cpu_budget_set(g_cycle_scale + 1);
+        g_calm_frames = 0;
+    }
+}
+
+/* host time this frame took, without presenting it */
+void cpu_budget_host_time(uint64_t ns) {
+    if (ns > HOST_LIMIT_NS && g_cycle_scale < g_base_scale) {
+        g_host_calm = 0;
+        if (++g_host_over >= HOST_OVER_FRAMES) {
+            g_host_over = 0;
+            g_fastest_scale = g_cycle_scale + 1;
+            cpu_budget_set(g_fastest_scale);
+            LOGI("cpu", "host too slow for more budget: %u instructions per refresh at most",
+                 (uint32_t)(PSX_NTSC_FRAME_CYCLES * 16 / g_fastest_scale));
+        }
+    } else {
+        g_host_over = 0;
+        if (g_fastest_scale > MIN_CYCLE_SCALE && ++g_host_calm >= HOST_RETRY_FRAMES) {
+            g_host_calm = 0;
+            g_fastest_scale--;
+        }
+    }
+}
+
+void ALIEN_80030E68__orig(CPU *c);
+void ALIEN_80030E68(CPU *c) {
+    bool frame = (c->r[31] & 0x1FFFFFFFu) == FRAME_WAIT_RA && g_base_scale < NO_BOOST_SCALE;
+    if (frame && g_frame_work_start >= 0)
+        cpu_budget_frame_done(c->cycles - g_frame_work_start);
+    ALIEN_80030E68__orig(c);
+    g_frame_work_start = frame ? c->cycles : -1;
+}
+
 /* return address (physical: the interpreter runs the game from KUSEG) of
  * the frame routine's VSync(3), its 20 fps cap while a level section loads
  * (flag at 0x800A4A14, see FINDINGS.md) */

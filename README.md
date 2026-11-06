@@ -127,9 +127,10 @@ screen, are clipped properly. It can be switched off for the original look.
 ### Steady 60 FPS
 
 On the original hardware busy scenes drop to 20–30 fps. The port runs the
-game's code at three times the original CPU speed by default, which keeps
-60 fps; the game measures elapsed time itself, so it plays at the same speed
-as on the console. The game also capped itself at 20 fps while loading the
+game's code at three times the original CPU speed by default and gives it more
+when a busy scene needs it and your computer can afford it, which keeps 60 fps;
+the game measures elapsed time itself, so it plays at the same speed as on the
+console. The game also capped itself at 20 fps while loading the
 next part of a level (from the terminal or door that starts the load until
 you walk through); the port stays at 60.
 

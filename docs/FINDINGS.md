@@ -225,6 +225,13 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   holds through all of it.
 * At original CPU speed the attract demo's combat scenes run at 20–30 fps;
   at 300% they hold 60 fps.
+* Frame budget: the frame routine waits for the next refresh in `0x80030E68`
+  (counter at `gp+368`, called at `0x8001FC64`), so a frame's work is the
+  instructions between two such calls. Measured at the 300% budget of 903k per
+  refresh: 353k facing a wall, 566k with the pulse rifle firing there, and up to
+  1.6M beside an alien in level 8 section 5. There, most of it is the movement
+  collision chain from `0x80026264` to `0x800269D8`, so it depends on the spot;
+  firing adds about 200k (`0x80024710`, `0x8002530C`, `0x80050D68`, `0x800645BC`).
 * libetc `VSync` wait helper: `0x80082C4C` in `ALIEN.BIN` (vblank counter at
   `0x8009D240`), `0x800163D4` in `SLUS_006.33` (counter at `0x8001F6C8`);
   timeout after `n << 15` loop iterations.

@@ -236,6 +236,10 @@ void pad_get_sticks(int port, uint8_t *rx, uint8_t *ry, uint8_t *lx, uint8_t *ly
 extern bool g_sprint;      /* sprint input held this frame */
 extern int g_sprint_pct;   /* player movement speed while sprinting, percent */
 extern bool g_infinite_flashlight; /* flashlight battery never runs down */
+/* adaptive CPU budget (native.c): the player's setting and the host's time */
+void cpu_budget_configure(uint32_t scale);
+void cpu_budget_host_time(uint64_t ns);
+
 extern int g_fov_deg;      /* horizontal field of view on screen, degrees (0 = original) */
 #define FOV_MAX_DEG 100
 /* the game's own horizontal field of view for a widescreen scale (g_ws_k) */
