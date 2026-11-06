@@ -194,6 +194,8 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   — unless every vertex is an exact GTE projection (true near-camera 3D).
   Matching vertices against GTE outputs alone is not reliable here: the
   hand-written renderer clips/subdivides near polygons in screen space.
+  The game's underwater ripple moves points right after projection, so the
+  moved positions are remembered as projected too.
   Two kinds of overlay are left unsquashed: solid colours across the whole
   width (fades, cutscene letterbox bars) and rectangles copying the displayed
   frame back to the same position (the explosion darkening), since that
