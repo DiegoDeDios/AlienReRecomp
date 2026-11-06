@@ -10,6 +10,7 @@
 #include "pgxp.h"
 #include "psx.h"
 #include "savestate.h"
+#include "automap.h"
 #include "widescreen.h"
 
 /* libetc VSync's wait helper: v_wait(target, n) spins until the vblank
@@ -603,7 +604,10 @@ static void draw_at_edges(CPU *c, void (*draw)(CPU *), int dy) {
 }
 
 void ALIEN_80033A9C__orig(CPU *c);
-void ALIEN_80033A9C(CPU *c) { draw_at_edges(c, ALIEN_80033A9C__orig, 0); }
+void ALIEN_80033A9C(CPU *c) {
+    automap_game_frame();
+    draw_at_edges(c, ALIEN_80033A9C__orig, 0);
+}
 
 void ALIEN_800343FC__orig(CPU *c);
 void ALIEN_800343FC(CPU *c) { draw_at_edges(c, ALIEN_800343FC__orig, TRACKER_DOWN); }

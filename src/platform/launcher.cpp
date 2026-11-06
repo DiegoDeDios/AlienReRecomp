@@ -1753,29 +1753,59 @@ static struct {
     Uint64 shown, until;
 } T;
 
+extern "C" void toast_prepare(SDL_Window *win, SDL_GPUDevice *dev, SDL_GPUTextureFormat fmt) {
+    if (L.imgui_ready || !win || !dev || fmt == SDL_GPU_TEXTUREFORMAT_INVALID)
+        return;
+    imgui_setup(win, dev, fmt);
+    ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);
+    L.imgui_ready = true;
+}
+
 extern "C" void toast_show(SDL_Window *win, SDL_GPUDevice *dev, SDL_GPUTextureFormat fmt,
                            const char *text, bool error) {
-    if (!win || !dev || fmt == SDL_GPU_TEXTUREFORMAT_INVALID)
+    toast_prepare(win, dev, fmt);
+    if (!L.imgui_ready)
         return;
-    if (!L.imgui_ready) {
-        imgui_setup(win, dev, fmt);
-        ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);
-        L.imgui_ready = true;
-    }
     snprintf(T.text, sizeof T.text, "%s", text);
     T.error = error;
     T.shown = SDL_GetTicks();
     T.until = T.shown + (error ? 3500 : 1800);
 }
 
-extern "C" bool toast_frame(void) {
-    if (!T.until || L.ingame || !L.imgui_ready)
+/* world units from the top of the screen to the bottom */
+static const float MAP_VIEW_UNITS = 2400.0f;
+
+static void draw_map(ImDrawList *dl, ImVec2 S, const AutomapView *m) {
+    float U = S.y / 720.0f, scale = S.y / MAP_VIEW_UNITS;
+    ImVec2 c(S.x * 0.5f, S.y * 0.5f);
+    dl->AddRectFilled(ImVec2(0, 0), S, IM_COL32(0, 0, 0, 255));
+    for (int i = 0; i < m->nsegs; i++) {
+        const AutomapSeg &s = m->segs[i];
+        dl->AddLine(ImVec2(c.x + (s.x0 - m->x) * scale, c.y + (s.z0 - m->z) * scale),
+                    ImVec2(c.x + (s.x1 - m->x) * scale, c.y + (s.z1 - m->z) * scale),
+                    IM_COL32(230, 0, 0, 255), 1.5f * U);
+    }
+    /* the player: an arrow in the walking direction */
+    float fx = -sinf(m->yaw), fy = cosf(m->yaw), r = 16 * U;
+    auto at = [&](float along, float across) {
+        return ImVec2(c.x + (fx * along - fy * across) * r, c.y + (fy * along + fx * across) * r);
+    };
+    ImU32 white = IM_COL32(255, 255, 255, 255);
+    dl->AddLine(at(-1, 0), at(1, 0), white, 1.5f * U);
+    dl->AddLine(at(1, 0), at(0.35f, 0.45f), white, 1.5f * U);
+    dl->AddLine(at(1, 0), at(0.35f, -0.45f), white, 1.5f * U);
+    dl->AddLine(at(-1, 0), at(-1.3f, 0.35f), white, 1.5f * U);
+    dl->AddLine(at(-1, 0), at(-1.3f, -0.35f), white, 1.5f * U);
+}
+
+extern "C" bool toast_frame(const AutomapView *map) {
+    if (L.ingame || !L.imgui_ready)
         return false;
     Uint64 now = SDL_GetTicks();
-    if (now >= T.until) {
+    if (T.until && now >= T.until)
         T.until = 0;
+    if (!T.until && !map)
         return false;
-    }
     /* drawn over the game: leave the mouse cursor (captured for mouse
      * look) alone */
     ImGuiIO &io = ImGui::GetIO();
@@ -1785,13 +1815,19 @@ extern "C" bool toast_frame(void) {
     ImGui::NewFrame();
     io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
     ImVec2 S = io.DisplaySize;
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    if (map)
+        draw_map(dl, S, map);
+    if (!T.until) {
+        ImGui::Render();
+        return true;
+    }
     float U = fmaxf(0.5f, fminf(S.y / 720.0f, S.x / 1100.0f));
     /* fade in and out */
     float a = fminf(1.0f, fminf((float)(now - T.shown) / 120.0f, (float)(T.until - now) / 400.0f));
     float fs = 21 * U, pad = 14 * U;
     ImVec2 ts = text_size(L.f_label, fs, T.text);
     ImVec2 p0(28 * U, S.y - 36 * U - ts.y - pad * 2), p1(p0.x + ts.x + pad * 2 + 10 * U, S.y - 36 * U);
-    ImDrawList *dl = ImGui::GetForegroundDrawList();
     ImU32 edge = T.error ? C_WARN : C_ACCENT;
     dl->AddRectFilled(p0, p1, IM_COL32(4, 7, 6, (int)(225 * a)), 6 * U);
     dl->AddRectFilled(p0, ImVec2(p0.x + 4 * U, p1.y), (edge & 0x00FFFFFF) | ((ImU32)(255 * a) << 24),

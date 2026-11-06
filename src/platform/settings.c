@@ -36,6 +36,7 @@ const ActionInfo g_actions[ACT_COUNT] = {
     [ACT_FAST_FORWARD] = {"fast_forward", "Fast forward", "", false},
     [ACT_QUICK_SAVE] = {"quick_save", "Quick save", "", false},
     [ACT_QUICK_LOAD] = {"quick_load", "Quick load", "", false},
+    [ACT_MAP] = {"map", "Map", "", false},
 };
 
 static const uint16_t g_act_button[ACT_COUNT] = {
@@ -81,6 +82,7 @@ void settings_default_bindings(Settings *s) {
         {ACT_FAST_FORWARD, SDL_SCANCODE_GRAVE, 0, -1},
         {ACT_QUICK_SAVE, SDL_SCANCODE_F5, 0, -1},
         {ACT_QUICK_LOAD, SDL_SCANCODE_F9, 0, -1},
+        {ACT_MAP, SDL_SCANCODE_M, 0, -1},
     };
     for (size_t i = 0; i < sizeof d / sizeof d[0]; i++) {
         s->key[d[i].a][0] = d[i].k0;
@@ -472,6 +474,7 @@ void input_read(const Settings *s, SDL_Gamepad *pad, uint32_t mouse_buttons, Inp
     out->fast_forward = held[ACT_FAST_FORWARD] || pad_held(pad, s->pad[ACT_FAST_FORWARD]);
     out->quick_save = held[ACT_QUICK_SAVE] || pad_held(pad, s->pad[ACT_QUICK_SAVE]);
     out->quick_load = held[ACT_QUICK_LOAD] || pad_held(pad, s->pad[ACT_QUICK_LOAD]);
+    out->map = held[ACT_MAP] || pad_held(pad, s->pad[ACT_MAP]);
 
     static bool stick_sprint;
     if (!pad) {

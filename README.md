@@ -47,6 +47,7 @@ only fully visible in widescreen.*
   * [Steady 60 FPS](#steady-60-fps)
   * [Mouse and Keyboard](#mouse-and-keyboard)
   * [Responsive Controls](#responsive-controls)
+  * [Map](#map)
   * [Quick Save](#quick-save)
   * [Settings Without Leaving the Game](#settings-without-leaving-the-game)
   * [Sprint](#sprint)
@@ -168,6 +169,15 @@ The port reads the controls right when the game needs them:
 | Movement with the left stick half pushed | 18% | 45% |
 | Full-speed turn | 137°/s | 206°/s |
 
+### Map
+
+Press **M** for a Doom-style map of the current part of the level: red wall
+outlines on black, with an arrow for you, following you as you move. Rooms
+appear once you have been in them, and the game keeps running while it is open.
+It shows the floor you are on, and closes when you pause or a cutscene starts.
+What has been revealed lasts until you quit the game. The key can be changed on
+the **Controls** page, which can also assign it to a controller button.
+
 ### Quick Save
 
 The original only saves at the save stations, and loading one puts you back
@@ -269,6 +279,7 @@ all changeable in **Controls**:
 | V / B (middle click) | L3 / R3 | centre view / quick turn |
 | ` (backtick) | | fast forward (added) |
 | F5 / F9 | | quick save / quick load (added) |
+| M | | map (added) |
 
 Fixed keys: F2 opens the settings overlay, F11 or Cmd+Ctrl+F toggles
 fullscreen (F11 only on Windows), F12 takes a screenshot (Shift+F12 dumps

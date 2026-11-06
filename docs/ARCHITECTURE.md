@@ -340,6 +340,27 @@ sets starting ammo, so a wrapper around the function that counts a pickup
 (`0x800524F0`) adds the difference instead of changing the table. Attract-mode
 demos keep the original amounts.
 
+### Map (`src/runtime/automap.c`)
+
+The walls come from the collision BSP of the current section, which the game
+keeps in RAM (format in `FINDINGS.md`). Slicing it at one height clips the
+room's box against each node down to the leaves, leaving 2D regions open at
+that height; an edge of one with solid behind it is a wall. The slice is taken
+30 units above the player's origin and redone when the rooms seen change or the
+player has climbed or dropped 48 units, so it stays put on stairs and shows one
+floor. It uses the first hull, and only leaf -2 counts as solid: the other values
+along room seams would otherwise draw as walls.
+
+The HUD routine's wrapper marks the room the player is in as seen, in one mask
+per section told apart by a hash of the map header. That also tells the map the
+player is in play, so it closes during the pause menu, cutscenes and demos. The
+masks live in the host only, not in save states or memory cards: they last until
+the program exits and a quick load does not take rooms back.
+
+Sections have their own coordinates and nothing found links them, so the map
+shows one section. The drawing is a Dear ImGui draw list in the toast's overlay
+pass (`launcher.cpp`), in window space, so widescreen does not affect it.
+
 ### Infinite flashlight
 
 Ripley carries a flashlight from the second level on (inventory item 76,

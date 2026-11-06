@@ -22,7 +22,7 @@ typedef enum {
     ACT_CROSS, ACT_CIRCLE, ACT_SQUARE, ACT_TRIANGLE,
     ACT_L1, ACT_L2, ACT_R1, ACT_R2, ACT_L3, ACT_R3,
     ACT_START, ACT_SELECT,
-    ACT_SPRINT, ACT_FAST_FORWARD, ACT_QUICK_SAVE, ACT_QUICK_LOAD,
+    ACT_SPRINT, ACT_FAST_FORWARD, ACT_QUICK_SAVE, ACT_QUICK_LOAD, ACT_MAP,
     ACT_COUNT
 } Action;
 
@@ -112,6 +112,7 @@ typedef struct InputState {
     uint8_t lx, ly, rx, ry;      /* analog sticks, 0x80 = centre */
     bool sprint, fast_forward;
     bool quick_save, quick_load;
+    bool map;
 } InputState;
 void input_read(const Settings *s, SDL_Gamepad *pad, uint32_t mouse_buttons,
                 InputState *out);

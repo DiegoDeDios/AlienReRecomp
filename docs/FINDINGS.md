@@ -37,6 +37,26 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   * `DEMOn.DEM` — attract-mode input recordings.
   * `FRONTEND.CVB`, `UFATHER.CVD`.
 
+## Level collision (`MAP` chunk)
+
+A Quake-style BSP. In RAM the pointer is at `0x800A4758` and the offsets of the
+file's header are pointers. Header: `+0x10` planes, `+0x14`, `+0x18`, `+0x1C` the
+node arrays of three hulls (the first two hold the level's detail, the third has
+only a few nodes), `+0x20` rooms, `+0x32` u16 room count (31 at most on the disc).
+* Room, 40 bytes: `+0x0C`, `+0x10`, `+0x14` u16 first node of each hull, each
+  followed by a u16 node count; `+0x1C` six s16: box min x, y, z, max x, y, z.
+* Node, 8 bytes: u32 `type | value << 2`, s16 child if negative, s16 child if not
+  (`0x800269D8`). Type 0, 1, 2: x, y or z + value. Type 3: value indexes the
+  planes, 12 bytes `{s16 nx, ny, nz, pad; s32 d}` with 1.0 = 4096, as nx x + ny y
+  + nz z + d. Positions and values are 20.12, the box whole units.
+* Negative child = leaf: -2 solid, -1 open. Other values (-10 to -20 seen) are
+  mostly slivers about 1 unit wide along room seams, but some cover large areas;
+  meaning unknown.
+* `0x80035F58` finds the room holding a point; -1 from `0x80026B3C` means inside.
+* Sections have their own coordinates (nearly all start at 10, 10, 10). y grows
+  downwards. Facing: at yaw 2048 the player walks towards -z and strafes right
+  towards +x; turning right raises yaw, so the walking direction is (-sin, cos).
+
 ## Textures and images
 
 * **Level files** (`L??S??.WAD`): a 2 KiB header with the chunk count at
@@ -228,10 +248,11 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
 * Frame budget: the frame routine waits for the next refresh in `0x80030E68`
   (counter at `gp+368`, called at `0x8001FC64`), so a frame's work is the
   instructions between two such calls. Measured at the 300% budget of 903k per
-  refresh: 353k facing a wall, 566k with the pulse rifle firing there, and up to
-  1.6M beside an alien in level 8 section 5. There, most of it is the movement
-  collision chain from `0x80026264` to `0x800269D8`, so it depends on the spot;
-  firing adds about 200k (`0x80024710`, `0x8002530C`, `0x80050D68`, `0x800645BC`).
+  refresh: 353k facing a wall, and 566k with the pulse rifle firing there; firing
+  adds about 200k (`0x80024710`, `0x8002530C`, `0x80050D68`, `0x800645BC`). A
+  reading of 1.6M beside an alien in level 8 section 5 is not normal play: the
+  test teleported the player to a point the BSP reports as solid, which keeps the
+  collision chain (`0x80026264` to `0x800269D8`) busy.
 * libetc `VSync` wait helper: `0x80082C4C` in `ALIEN.BIN` (vblank counter at
   `0x8009D240`), `0x800163D4` in `SLUS_006.33` (counter at `0x8001F6C8`);
   timeout after `n << 15` loop iterations.

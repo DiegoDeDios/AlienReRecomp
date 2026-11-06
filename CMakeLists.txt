@@ -82,6 +82,7 @@ set(RUNTIME_SRC
   src/runtime/interp.c
   src/runtime/verify.c
   src/runtime/widescreen.c
+  src/runtime/automap.c
   src/runtime/native.c
   src/runtime/pgxp.c
   src/runtime/disc.c

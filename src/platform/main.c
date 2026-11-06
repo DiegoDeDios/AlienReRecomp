@@ -51,7 +51,7 @@ static struct {
     int nstates;
     struct { long frame; uint32_t addr, value; int size; } pokes[32];
     int npokes;
-    struct { long frame; long len; uint16_t button; bool sprint; } presses[256];
+    struct { long frame; long len; uint16_t button; bool sprint, map; } presses[256];
     int npresses;
     struct { long frame; long len; int lx, ly, rx, ry; } sticks[64];
     int nsticks;
@@ -97,6 +97,7 @@ static Settings g_applied;  /* the settings currently in effect */
 #define OVERLAY_COMBO_FRAMES 20
 static OverlayInfo g_overlay_info;
 static bool g_overlay_want;    /* open it once this vblank's input is read */
+static bool g_map_open;
 static int g_combo_frames;
 static bool g_combo_latched;   /* Select+Start kept from the game until released */
 static bool g_input_hold;      /* after closing: buttons still held stay with the overlay */
@@ -232,13 +233,14 @@ static void write_shot(const char *path, bool vram) {
 /* ------------------------------------------------------------------ */
 /* input                                                               */
 
-static uint16_t scripted_buttons(bool *sprint) {
+static uint16_t scripted_buttons(bool *sprint, bool *map) {
     uint16_t b = 0;
     for (int i = 0; i < opt.npresses; i++)
         if (g_frame >= opt.presses[i].frame &&
             g_frame < opt.presses[i].frame + opt.presses[i].len) {
             b |= opt.presses[i].button;
             *sprint |= opt.presses[i].sprint;
+            *map |= opt.presses[i].map;
         }
     return b;
 }
@@ -288,8 +290,8 @@ static bool overlay_combo(void) {
 }
 
 static void poll_input(void) {
-    bool sprint = false;
-    uint16_t b = scripted_buttons(&sprint);
+    bool sprint = false, map = false;
+    uint16_t b = scripted_buttons(&sprint, &map);
     uint8_t lx = 0x80, ly = 0x80, rx = 0x80, ry = 0x80;
     float mdx = 0, mdy = 0;
     for (int i = 0; i < opt.nmice; i++)
@@ -354,6 +356,11 @@ static void poll_input(void) {
             quick_request(true);
         qs_held = in.quick_save;
         ql_held = in.quick_load;
+        static bool map_held;
+        map |= in.map;
+        if (map && !map_held)
+            g_map_open = !g_map_open;
+        map_held = map;
         if (g_mouse_captured && g_cfg.mouse_look)
             mdx += g_mouse_dx, mdy += g_mouse_dy;
         g_mouse_dx = g_mouse_dy = 0;
@@ -728,6 +735,18 @@ static void script_tick(void) {
 /* ------------------------------------------------------------------ */
 /* in-game overlay                                                     */
 
+/* a quick save / load message and the map, over the game; the map closes
+ * when the player leaves play (pause menu, cutscene) */
+static void update_game_overlays(void) {
+    if (!g_gpu_ok)
+        return;
+    AutomapView view;
+    g_map_open = g_map_open && automap_view(&view);
+    if (g_map_open)
+        toast_prepare(g_win, render_gpu_device(), render_window_format());
+    render_set_overlay(toast_frame(g_map_open ? &view : NULL) ? toast_render : NULL);
+}
+
 /* Runs the overlay until the player resumes. The emulated machine is
  * paused meanwhile (this runs inside the vblank event), as is the audio;
  * the last game frame stays on screen under the menu. */
@@ -957,9 +976,7 @@ void platform_vblank(void) {
         run_overlay();
         poll_input();
     }
-    /* a quick save / load message over the game */
-    if (g_gpu_ok)
-        render_set_overlay(toast_frame() ? toast_render : NULL);
+    update_game_overlays();
     uint64_t work_end = SDL_GetTicksNS();
     if (g_frame_end_ns)
         cpu_budget_host_time(work_end - g_frame_end_ns);
@@ -1256,8 +1273,11 @@ static void parse_args(int argc, char **argv) {
             if (f && bn && opt.npresses < 256) {
                 opt.presses[opt.npresses].frame = atol(f);
                 opt.presses[opt.npresses].sprint = !strcmp(bn, "sprint");
+                opt.presses[opt.npresses].map = !strcmp(bn, "map");
                 opt.presses[opt.npresses].button =
-                    opt.presses[opt.npresses].sprint ? 0 : button_by_name(bn);
+                    opt.presses[opt.npresses].sprint || opt.presses[opt.npresses].map
+                        ? 0
+                        : button_by_name(bn);
                 opt.presses[opt.npresses].len = ln ? atol(ln) : 4;
                 opt.npresses++;
             }
