@@ -52,6 +52,8 @@ enum {
     PRIM_WS_2D = 1 << 8,     /* not from the GTE: squash around screen centre */
     PRIM_WS_SPRITE = 1 << 9, /* 2D shape centred on a projected point:
                                 squash around its own centre */
+    PRIM_WS_FULL = 1 << 10,  /* 2D across the whole width: not squashed, and
+                                placed exactly so no edge is left uncovered */
 };
 
 typedef struct GpuBackend {
