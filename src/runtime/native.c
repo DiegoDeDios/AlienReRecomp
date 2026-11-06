@@ -125,6 +125,36 @@ static void flashlight_fill(void) {
         mem_w16(inv + 0x44, (uint16_t)mem_r32(FLASHLIGHT_CAPACITY));
 }
 
+/* Ammo pickups, rebalanced (0x800524F0, the one place pickups are counted). The
+ * game's amount table at 0x800A7A44 also sets starting ammo at level start, so
+ * it stays as it is and the difference is added here. Item codes as in
+ * FINDINGS.md; a negative count means infinite. */
+#define PICKUP_AMOUNTS 0x800A7A44u
+
+static int ammo_pickup_amount(uint32_t code) {
+    switch (code) {
+    case 57: return 8;  /* shotgun shells */
+    case 58: return 90; /* pulse rifle clip */
+    case 61: return 9;  /* grenade shells */
+    case 62: return 80; /* laser energy clip */
+    case 63: return 8;  /* rocket shells */
+    default: return 0;
+    }
+}
+
+void ALIEN_800524F0__orig(CPU *c);
+void ALIEN_800524F0(CPU *c) {
+    uint32_t code = c->r[4];
+    ALIEN_800524F0__orig(c);
+    int amount = ammo_pickup_amount(code);
+    int32_t count = (int16_t)c->r[2];
+    if (!amount || count < 0 || mem_r32(DEMO_PLAYBACK))
+        return;
+    count += amount - (int32_t)mem_r32(PICKUP_AMOUNTS + (code + 22) * 4);
+    mem_w16(mem_r32(INVENTORY_PTR) + 12 + (code - 48) * 2, (uint16_t)count);
+    c->r[2] = (uint32_t)count;
+}
+
 void ALIEN_800625CC__orig(CPU *c);
 void ALIEN_800625CC(CPU *c) {
     bool keep = g_infinite_flashlight && mem_r32(DEMO_PLAYBACK) == 0;

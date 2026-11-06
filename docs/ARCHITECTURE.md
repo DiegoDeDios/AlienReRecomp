@@ -308,6 +308,14 @@ object while it is standing (not crouched) and no attract demo is playing,
 so walls, slopes and doors behave as usual and the speed ramps up and down
 smoothly.
 
+### Ammo pickups (`src/runtime/native.c`)
+
+Shotgun shells, pulse rifle clips, grenade shells, laser clips and rocket shells
+give more than in the original, with no setting. The game's amount table also
+sets starting ammo, so a wrapper around the function that counts a pickup
+(`0x800524F0`) adds the difference instead of changing the table. Attract-mode
+demos keep the original amounts.
+
 ### Infinite flashlight
 
 Ripley carries a flashlight from the second level on (inventory item 76,

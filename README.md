@@ -235,6 +235,9 @@ and then has to recharge while switched off. With **Infinite flashlight**
 
 * Memory card saves work (save, load, overwrite) and are kept as standard
   memory card images.
+* Ammo pickups give more, always on: shotgun shells 8 (originally 4), pulse
+  rifle clips 90 (60), grenade shells 9 (6), laser clips 80 (40), rocket shells
+  8 (4).
 * **Skip intro movies** starts straight at the title menu.
 * **Fast forward**: hold the backtick key.
 * Invert Y is off by default (the original defaulted to on); the game's own

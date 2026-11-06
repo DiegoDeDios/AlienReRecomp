@@ -333,6 +333,11 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   76 and 77: 1200); the HUD shows amounts with a maximum as a percentage.
   The same table area holds gameplay constants, e.g. `+0xCC` flashlight
   capacity (1200), `+0xD0..+0xE0` flashlight flicker parameters.
+* Pickups: touching one calls `0x80052D8C`, which reads the item code from the
+  object (`+0x142`); a weapon already owned counts as its ammo (code + 8).
+  `0x800524F0(c)` then adds the amount at `0x800A7A44 + (c + 22) × 4` unless the
+  count is negative (infinite). Level setup (`0x8005281C`, `0x80052698`) reads
+  the same table for starting ammo.
 * HUD (`0x80034BA4` per frame): `0x80052AEC` rebuilds two lists from the
   inventory, weapons at `0x8010C430` and items at `0x8010C588` (`int
   selected; int count; 8-byte slots {u16 code; …; s16 amount}`), and
