@@ -125,30 +125,32 @@ needed, so the GitHub Actions workflow (`.github/workflows/release.yml`)
 builds them too: for every pull request into `main`, every push to `main`
 and on demand. A pull request can only be merged once **Build (macOS)**,
 **Build (Windows)** and **Build (Linux)** have passed (required checks of
-`main`, with **Version bump** below); the packages of each run are kept as
+`main`); the packages of each run are kept as
 workflow artifacts for 14 days, handy for trying a pull request before
 merging it.
 
-**Every merged pull request is a release.** The version lives in one place,
-`PORT_VERSION` in `src/platform/launcher.h`, and each pull request into
-`main` must raise it (the **Version bump** check,
-`.github/workflows/version-check.yml`, which runs
-`tools/check_version_bump.sh`; it can be run locally the same way). When
-the merge reaches `main`, the release workflow tags the commit
-`v<version>` and creates a **draft** GitHub release, **ARR v<version>**,
-with the macOS, Windows and Linux packages, `packaging/RELEASE_NOTES.md`
-and the list of pull requests since the last release. Review the draft and
-publish it by hand. Pushing a `v*` tag by hand still works too (it must
-match `PORT_VERSION`).
+**Every merged pull request is a release, numbered automatically.** The next
+version is the highest `vX.Y.Z` tag with the patch number raised
+(`tools/next_version.sh`); CI stamps it into `PORT_VERSION` for the build
+(`tools/set_version.sh`), so the source only holds `0.0.0-dev`, which is what
+local builds show. When a merge reaches `main`, the release workflow tags the
+commit `v<version>` and creates a **draft** GitHub release, **ARR v<version>**,
+with the macOS, Windows and Linux packages, `packaging/RELEASE_NOTES.md` and
+the list of pull requests since the last release. Review the draft and publish
+it by hand.
+
+A direct push to `main` releases nothing; running **Build and release** by hand
+on `main` releases it. To raise the major or minor version, push a tag such as
+`v0.2.0` by hand: that commit is released as that version and later merges
+continue from it.
 
 **Pre-releases** let people try a branch before its pull request is merged.
-Every push to a `feature/` or `fix/` branch runs **Pre-release**
-(`.github/workflows/pre-release.yml`), once the branch has raised
-`PORT_VERSION` to a version not released yet. It builds the branch's head with
-the version marked `<version>-pre` (package names, launcher, quick saves) and
-publishes a GitHub pre-release with the packages and the branch's commits,
-tagged `v<version>-pre-<hash of the branch name>`, so branches at the same
-version do not clash. Each branch has one: a new push replaces it, and deleting
+Every push to a `feature/` or `fix/` branch with commits of its own runs
+**Pre-release** (`.github/workflows/pre-release.yml`). It builds the branch's
+head with the version marked `<next version>-pre` (package names, launcher,
+quick saves) and publishes a GitHub pre-release with the packages and the
+branch's commits, tagged `v<next version>-pre-<hash of the branch name>`, so
+branches do not clash. Each branch has one: a new push replaces it, and deleting
 the branch deletes it. Other branches can run the workflow by hand:
 *Actions > Pre-release > Run workflow* with *Use workflow from* set to the
 branch, or `gh workflow run pre-release.yml --ref <branch>`. The release of the

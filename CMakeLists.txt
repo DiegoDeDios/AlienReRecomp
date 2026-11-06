@@ -113,9 +113,8 @@ target_compile_options(alien PRIVATE -Wall -Wextra -Wno-unused-parameter
   -fno-strict-aliasing)
 target_link_libraries(alien PRIVATE game_code imgui SDL3::SDL3 m)
 
-# Port version (single source: PORT_VERSION in src/platform/launcher.h). A
-# suffix such as "-pre" (pre-release builds, .github/workflows/
-# pre-release.yml) is left out of the numeric version used here.
+# Port version: PORT_VERSION in src/platform/launcher.h, stamped by CI. A
+# suffix such as "-pre" is left out of the numeric version used here.
 file(STRINGS ${CMAKE_SOURCE_DIR}/src/platform/launcher.h _port_version_line
      REGEX "#define PORT_VERSION \"")
 string(REGEX MATCH "\"([0-9]+)\\.([0-9]+)\\.([0-9]+)(-[0-9A-Za-z.]+)?\"" _m "${_port_version_line}")

@@ -2,14 +2,11 @@
 # of its head, so people can try it before the pull request is merged. Other
 # branches can run it by hand (Actions > Pre-release > Run workflow).
 #
-# Each branch has one pre-release, tagged v<PORT_VERSION>-pre-<hash of the
-# branch name> (tools/prerelease_id.sh), so branches at the same version do not
-# clash and a new push replaces the branch's previous one. Deleting the branch
-# deletes its pre-release.
-#
-# A branch that has not raised PORT_VERSION above main's, to a version not
-# released yet (tools/check_version_bump.sh), gets no pre-release until it does.
-# The packages and the launcher show the version as <PORT_VERSION>-pre.
+# Each branch has one pre-release, tagged v<next version>-pre-<hash of the
+# branch name> (tools/next_version.sh, tools/prerelease_id.sh), so branches do
+# not clash and a new push replaces the branch's previous one. Deleting the
+# branch deletes its pre-release. A branch with no commits of its own is skipped.
+# The packages and the launcher show the version as <next version>-pre.
 name: Pre-release
 
 on:
@@ -42,20 +39,20 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # main and the existing tags
-      - name: Feature branch with a new version
+      - name: Feature branch with its own commits
         id: v
         run: |
           if [ "$GITHUB_REF_TYPE" != branch ] || [ "$GITHUB_REF_NAME" = main ]; then
             echo "::error::run this on a feature branch (main is released by release.yml)"
             exit 1
           fi
-          if ! tools/check_version_bump.sh origin/main > /dev/null 2> reason.txt; then
-            echo "::notice::No pre-release for $GITHUB_REF_NAME: $(sed 's/^error: //' reason.txt)"
+          if [ "$(git rev-list --count origin/main..HEAD)" = 0 ]; then
+            echo "::notice::No pre-release for $GITHUB_REF_NAME: no commits ahead of main"
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          version=$(sed -n 's/^#define PORT_VERSION "\(.*\)"/\1/p' src/platform/launcher.h)
-          tag="v$version-pre-$(tools/prerelease_id.sh "$GITHUB_REF_NAME")"
+          version=$(tools/next_version.sh)-pre
+          tag="v$version-$(tools/prerelease_id.sh "$GITHUB_REF_NAME")"
           {
             echo "publish=true"
             echo "version=$version"
@@ -63,19 +60,17 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Pre-release $tag from $GITHUB_REF_NAME at $GITHUB_SHA"
 
-  # the builds are release.yml's, plus the -pre version mark
+  # the builds are release.yml's
 
   macos:
     name: Pre-release build (macOS)
     needs: version
     if: needs.version.outputs.publish == 'true'
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
-      - name: Mark the version as a pre-release
-        run: |
-          perl -pi -e 's/^(#define PORT_VERSION "[^"]+)"/$1-pre"/' src/platform/launcher.h
-          grep '^#define PORT_VERSION ".*-pre"' src/platform/launcher.h
+      - name: Stamp the version
+        run: sh tools/set_version.sh ${{ needs.version.outputs.version }}
       - name: Tools
         run: brew install ninja
       - name: Build AlienResurrection.app (universal)
@@ -93,10 +88,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - name: Mark the version as a pre-release
-        run: |
-          perl -pi -e 's/^(#define PORT_VERSION "[^"]+)"/$1-pre"/' src/platform/launcher.h
-          grep '^#define PORT_VERSION ".*-pre"' src/platform/launcher.h
+      - name: Stamp the version
+        run: sh tools/set_version.sh ${{ needs.version.outputs.version }}
       - name: Tools
         run: sudo apt-get update && sudo apt-get install -y mingw-w64 cmake ninja-build zip
       - name: Build AlienResurrection.exe (cross-compiled)
@@ -116,10 +109,8 @@ jobs:
     container: ubuntu:22.04
     steps:
       - uses: actions/checkout@v7
-      - name: Mark the version as a pre-release
-        run: |
-          perl -pi -e 's/^(#define PORT_VERSION "[^"]+)"/$1-pre"/' src/platform/launcher.h
-          grep '^#define PORT_VERSION ".*-pre"' src/platform/launcher.h
+      - name: Stamp the version
+        run: sh tools/set_version.sh ${{ needs.version.outputs.version }}
       - name: Tools and SDL3 build dependencies
         run: sh tools/linux/install_deps_ubuntu.sh
       - name: Build AlienResurrection (x86_64)
@@ -144,11 +135,9 @@ jobs:
         with:
           path: dist
       - name: Notes
-        env:
-          VERSION: ${{ needs.version.outputs.version }}
         run: |
           {
-            echo "**Pre-release for testing:** branch \`$GITHUB_REF_NAME\` at ${GITHUB_SHA:0:7}, ahead of the v$VERSION release. It may still change before that release, and its quick saves do not carry over to it."
+            echo "**Pre-release for testing:** branch \`$GITHUB_REF_NAME\` at ${GITHUB_SHA:0:7}, ahead of the next release. It may still change before then, and its quick saves do not carry over to the release."
             echo
             echo "## Changes since the last release"
             echo

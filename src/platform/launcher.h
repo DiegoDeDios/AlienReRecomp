@@ -13,7 +13,8 @@
 extern "C" {
 #endif
 
-#define PORT_VERSION "0.1.8"
+/* CI stamps the real version (tools/set_version.sh) */
+#define PORT_VERSION "0.0.0-dev"
 
 /* Runs the launcher in `win` until the player starts the game (returns
  * true) or quits (false). `cfg` holds the settings for this run and is
