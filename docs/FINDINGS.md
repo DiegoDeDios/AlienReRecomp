@@ -348,7 +348,15 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
 * HUD (`0x80034BA4` per frame): `0x80052AEC` rebuilds two lists from the
   inventory, weapons at `0x8010C430` and items at `0x8010C588` (`int
   selected; int count; 8-byte slots {u16 code; …; s16 amount}`), and
-  `0x80033AA4` draws them; the motion tracker is `0x800343FC`.
+  `0x80033A9C` draws them; the motion tracker is `0x800343FC` and the crosshair
+  `0x80034A50`, which projects the aim point at player `+232` with `RTPS` and
+  averages it with the last position (`gp+16856`, `gp+16858`). Panels are
+  `POLY_FT4` from `0x80033628` and `0x8003373C` (the second clips x at 0 without
+  masking, so a negative x spills sign bits into y); the crosshair is 8 `LINE_F2`.
+  Layout in the 384-wide buffer, of which the display mode shows 368 columns:
+  health x 13–104, y 15; tracker x 13–75, y 169; weapon panel x 290–367, y 204;
+  item panel x 307–370, y 15. Panels slide in with `0x800363EC` (`0x8010C572` is
+  the slide, 0 = in place, and `0x8010C575` an extra x offset for the tracker).
 * Use item (`0x80052FA0`, from the player update when the gameplay command
   bit `0x0004` — Circle — is pressed): jump table at `0x800A2F34` indexed
   by `code − 64`. The flashlight case (`0x800530B4`) switches the light off

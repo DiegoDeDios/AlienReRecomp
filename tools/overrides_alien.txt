@@ -12,4 +12,7 @@
 8005ecbc wrap  # player update (camera: mouse look and right stick)
 80032530 wrap  # build the gameplay command block (movement stick)
 8001eec0 wrap  # per-frame camera setup: projection distance (field of view)
+80033a9c wrap  # HUD panels: move to the screen edges in widescreen
+800343fc wrap  # motion tracker: same
+80034a50 wrap  # crosshair: keep it on its projected point in widescreen
 80020848 wrap  # first-person weapon pass (keeps the original projection)

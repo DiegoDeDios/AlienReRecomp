@@ -561,3 +561,60 @@ void ALIEN_80020848(CPU *c) {
     if (off)
         gte_write_ctrl(c, 26, h);
 }
+
+/* Widescreen HUD. The renderer squashes overlays around the middle of the
+ * 384-wide buffer, which leaves the HUD in the old 4:3 box. Moving its packets
+ * right after they are built puts it at the screen edges. The game shows 368
+ * columns of that buffer, so raw x 384 is mapped to the right edge and 0 to the
+ * left one. Menus and text do not come through here and stay centred. */
+#define PACKET_PTR     0x1F800044u /* next free byte of the packet buffer */
+#define DISPLAY_W      368.0f
+#define HUD_MIDDLE     192
+#define POLY_FT4       0x2Cu       /* xy words 2, 4, 6, 8 */
+#define LINE_F2        0x40u       /* xy words 2, 3 */
+#define CROSSHAIR_X_GP 16856       /* smoothed x of the projected aim point */
+
+static void shift_packets(uint32_t from, uint32_t to, int left_dx, int right_dx) {
+    for (uint32_t p = from; p < to; p += ((mem_r32(p) >> 24) + 1) * 4) {
+        uint32_t cmd = (mem_r32(p + 4) >> 24) & 0xFC;
+        if (cmd != POLY_FT4 && cmd != LINE_F2)
+            continue;
+        bool quad = cmd == POLY_FT4;
+        int dx = (int16_t)mem_r32(p + 8) < HUD_MIDDLE ? left_dx : right_dx;
+        for (int i = 0; i < (quad ? 4 : 2); i++) {
+            uint32_t a = p + 8 + (uint32_t)i * (quad ? 8 : 4), xy = mem_r32(a);
+            mem_w32(a, (xy & 0xFFFF0000u) | ((xy + (uint32_t)dx) & 0xFFFFu));
+        }
+    }
+}
+
+/* run a HUD routine and send what it drew to the nearest screen edge */
+static void draw_at_edges(CPU *c, void (*draw)(CPU *)) {
+    uint32_t from = mem_r32(PACKET_PTR);
+    draw(c);
+    if (!g_ws_wide_display)
+        return;
+    float k = g_ws_k;
+    int left = (int)lroundf(-HUD_MIDDLE * (1.0f - k) / k);
+    int right = (int)lroundf((DISPLAY_W - HUD_MIDDLE) / k - HUD_MIDDLE);
+    shift_packets(from, mem_r32(PACKET_PTR), left, right);
+}
+
+void ALIEN_80033A9C__orig(CPU *c);
+void ALIEN_80033A9C(CPU *c) { draw_at_edges(c, ALIEN_80033A9C__orig); }
+
+void ALIEN_800343FC__orig(CPU *c);
+void ALIEN_800343FC(CPU *c) { draw_at_edges(c, ALIEN_800343FC__orig); }
+
+/* The crosshair is at a GTE projection, already wide, so only its shape may be
+ * squashed: the shift cancels what the squash does to its position. */
+void ALIEN_80034A50__orig(CPU *c);
+void ALIEN_80034A50(CPU *c) {
+    uint32_t from = mem_r32(PACKET_PTR);
+    ALIEN_80034A50__orig(c);
+    if (!g_ws_wide_display)
+        return;
+    int x = (int16_t)mem_r16(c->r[28] + CROSSHAIR_X_GP);
+    int dx = (int)lroundf((float)(x - HUD_MIDDLE) * (1.0f - g_ws_k) / g_ws_k);
+    shift_packets(from, mem_r32(PACKET_PTR), dx, dx);
+}

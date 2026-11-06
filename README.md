@@ -101,8 +101,8 @@ or a controller.
 ### Widescreen and Wider Field of View
 
 * **Widescreen** at 16:9, 16:10, 21:9 or 32:9 widens the view in 3D instead
-  of stretching the picture. The HUD, menus, loading screens and movies keep
-  their original 4:3 shapes.
+  of stretching the picture. The HUD moves out to the screen edges, and it,
+  the menus, loading screens and movies keep their original 4:3 shapes.
 * **Field of view** slider: the game's own view is fairly narrow (53°
   across the screen at 4:3, 67° with 16:9 widescreen); widen it up to 100°.
   The first-person weapon keeps its original framing.

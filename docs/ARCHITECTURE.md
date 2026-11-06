@@ -200,6 +200,16 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   width (fades, cutscene letterbox bars) and rectangles copying the displayed
   frame back to the same position (the explosion darkening), since that
   frame is already wide.
+* **HUD at the edges** (`src/runtime/native.c`): the squash alone leaves the HUD
+  in the 4:3 box. Wrappers around the panel and tracker routines (`0x80033A9C`,
+  `0x800343FC`) shift the x of the packets each one just built (the packet
+  pointer is at `0x1F800044`), left of the middle towards the left edge and the
+  rest towards the right, so the squash puts them at the same margins as at
+  4:3. The display shows 368 columns of the 384-wide buffer, so raw x 384 maps
+  to the right edge. Menus and text never pass through these routines.
+* **Crosshair**: `0x80034A50` places it with `RTPS`, so its position is already
+  wide. A wrapper shifts its lines to cancel the squash on the position, and
+  only its shape is squashed.
 * **Display aspect per frame**: the window is only shown wide while 3D is
   being drawn; pure 2D screens (loading screens, bitmaps) and FMV stay 4:3,
   pillarboxed.
