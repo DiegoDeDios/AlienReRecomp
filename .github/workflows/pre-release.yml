@@ -69,7 +69,7 @@ jobs:
     name: Pre-release build (macOS)
     needs: version
     if: needs.version.outputs.publish == 'true'
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
       - name: Mark the version as a pre-release
