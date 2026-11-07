@@ -53,6 +53,7 @@ only fully visible in widescreen.*
   * [Sprint](#sprint)
   * [Enemy Damage Sliders](#enemy-damage-sliders)
   * [Infinite Flashlight](#infinite-flashlight)
+  * [HD Textures](#hd-textures)
   * [Smaller Changes](#smaller-changes)
 * [Controls](#controls)
 * [Planned Features](#planned-features)
@@ -241,6 +242,16 @@ and then has to recharge while switched off. With **Infinite flashlight**
 | --- | --- |
 | ![The original flashlight has run out](docs/media/flashlight_original.jpg) | ![The infinite flashlight is still on](docs/media/flashlight_infinite.jpg) |
 
+### HD Textures
+
+New high resolution artwork in place of the game's own, for now the title logo and
+the menu bands, which also reach the edges of a widescreen window. You can switch
+them off.
+
+| Original | HD textures |
+| --- | --- |
+| ![The title menu with the game's own logo and bands, which stop short of the window's edges](docs/media/menu_original.jpg) | ![The same frame with the HD logo and metal bands across the whole window](docs/media/menu_hd.jpg) |
+
 ### Smaller Changes
 
 * Memory card saves work (save, load, overwrite) and are kept as standard
@@ -252,9 +263,6 @@ and then has to recharge while switched off. With **Infinite flashlight**
 * **Fast forward**: hold the backtick key.
 * Enemies leap the same height at 60 fps as at the original frame rate; the
   extra frames used to send them much higher and further.
-* **HD textures**: new high resolution artwork in place of the game's own, for now
-  the title logo. You can switch them off, or add your own from a `textures`
-  folder (see [Architecture](docs/ARCHITECTURE.md#texture-replacement)).
 * Flickering lights flash at most 3 times a second, for players sensitive to
   flashing, and rotating lights turn at their 30 fps speed.
 * Invert Y is off by default (the original defaulted to on); the game's own
@@ -302,14 +310,6 @@ the game's own pause menu stays closed.
 
 ## Planned Features
 
-* **High-resolution texture replacement.** The game's art can't simply be
-  swapped for bigger images: textures are small 4-bit tiles packed into
-  256×256 VRAM pages, each drawn with its own 16-colour palette (see
-  [Textures and images](docs/FINDINGS.md#textures-and-images)). The plan,
-  as in emulators such as DuckStation, is to dump every texture the game
-  draws to PNG (named by a hash of its pixels and palette), let them be
-  upscaled or repainted, and have the renderer draw the replacements.
-  Full-screen images (loading screens, title art) can be replaced whole.
 * **Linux: an AppImage or Flatpak** for desktop integration, and arm64
   packages (they build with `ARCH=arm64 tools/build_linux_docker.sh` but
   are not part of the release yet).
@@ -384,10 +384,10 @@ release.
 
 AI is used in the development of this project, but no generative AI is or will
 be used for image and texture generation or upscaling. The 4K version of the logo
-was made by me in Inkscape, and texture packs are used with due credit to the
+was made by me on Inkscape, and texture packs are used with due credit to the
 original artists (see [Credits](#credits)).
 
-(yes, I know the app logo can fall in the category but I promised I'm working on a
+(yes, I know the app logo can fall in that category but I promise I'm working on a
 human-made one)
 
 #### Where do I report a bug?
