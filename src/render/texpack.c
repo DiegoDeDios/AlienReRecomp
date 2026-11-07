@@ -4,10 +4,11 @@
  *     [any name]
  *     image = picture.png
  *     screen = x y w h                         (optional: one image for all sources)
+ *     fill = y h                               (or: across the window, at these rows)
  *     source = page_x page_y bits clut_x clut_y u v w h
  *
- * Sources are the columns of a texture dump's list. Without `screen`, each one
- * is a sprite replaced where it is drawn. */
+ * Sources are the columns of a texture dump's list. Without `screen` or `fill`,
+ * each one is a sprite replaced where it is drawn. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,9 +21,18 @@
 typedef struct Section {
     char image[256];
     int at[4];
-    bool has_at;
+    TexrepPlace place;
     int group;
 } Section;
+
+/* images already loaded: two sections can share one */
+#define MAX_LOADED 64
+static struct {
+    char path[1024];
+    int image;
+    float aspect;
+} g_loaded[MAX_LOADED];
+static int g_nloaded;
 
 static char *trim(char *s) {
     while (*s == ' ' || *s == '\t')
@@ -35,9 +45,14 @@ static char *trim(char *s) {
 
 /* decoded with alpha premultiplied: filtering then does not pull in the colour
  * of transparent pixels */
-static int load_image(const char *dir, const char *name) {
+static int load_image(const char *dir, const char *name, float *aspect) {
     char path[1024];
     snprintf(path, sizeof path, "%s/%s", dir, name);
+    for (int i = 0; i < g_nloaded; i++)
+        if (!strcmp(g_loaded[i].path, path)) {
+            *aspect = g_loaded[i].aspect;
+            return g_loaded[i].image;
+        }
     SDL_Surface *png = SDL_LoadPNG(path);
     if (!png) {
         LOGW("textures", "%s: %s", path, SDL_GetError());
@@ -54,7 +69,13 @@ static int load_image(const char *dir, const char *name) {
                 p[c] = (uint8_t)(p[c] * p[3] / 255);
     }
     int image = render_add_image(rgba->pixels, rgba->w, rgba->h, rgba->pitch);
+    *aspect = (float)rgba->w / (float)rgba->h;
     SDL_DestroySurface(rgba);
+    if (image >= 0 && g_nloaded < MAX_LOADED) {
+        snprintf(g_loaded[g_nloaded].path, sizeof g_loaded[g_nloaded].path, "%s", path);
+        g_loaded[g_nloaded].image = image;
+        g_loaded[g_nloaded++].aspect = *aspect;
+    }
     return image;
 }
 
@@ -62,9 +83,10 @@ static int load_image(const char *dir, const char *name) {
 static int section_group(Section *sec, const char *dir) {
     if (sec->group >= 0 || !sec->image[0])
         return sec->group;
-    int image = load_image(dir, sec->image);
+    float aspect = 1.0f;
+    int image = load_image(dir, sec->image, &aspect);
     if (image >= 0)
-        sec->group = texrep_add_group(image, sec->has_at ? sec->at : NULL);
+        sec->group = texrep_add_group(image, aspect, sec->place, sec->at);
     sec->image[0] = 0;
     return sec->group;
 }
@@ -86,7 +108,11 @@ static void read_line(char *line, Section *sec, const char *dir) {
     if (!strcmp(key, "image")) {
         snprintf(sec->image, sizeof sec->image, "%s", value);
     } else if (!strcmp(key, "screen")) {
-        sec->has_at = sscanf(value, "%d %d %d %d", &sec->at[0], &sec->at[1], &sec->at[2], &sec->at[3]) == 4;
+        if (sscanf(value, "%d %d %d %d", &sec->at[0], &sec->at[1], &sec->at[2], &sec->at[3]) == 4)
+            sec->place = TEXREP_SCREEN;
+    } else if (!strcmp(key, "fill")) {
+        if (sscanf(value, "%d %d", &sec->at[0], &sec->at[1]) == 2)
+            sec->place = TEXREP_FILL;
     } else if (!strcmp(key, "source")) {
         int f[9];
         if (sscanf(value, "%d %d %d %d %d %d %d %d %d", &f[0], &f[1], &f[2], &f[3], &f[4], &f[5], &f[6],

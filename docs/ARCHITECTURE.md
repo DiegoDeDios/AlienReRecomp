@@ -406,6 +406,26 @@ which is how the game fades them. Rules are tried in load order, so a player's
 `<data folder>/textures` goes before the port's `textures` next to the program,
 which comes from `assets/textures` (`--textures DIR` uses only that folder).
 
+`fill = y h` is for a band across the window at those rows, such as the menus' top
+and bottom bands, which the game draws from the same two textures with the bottom
+one upside down (rows 177 to 239):
+
+```ini
+[menu band, bottom]
+image = menu_band.png
+fill = 177 63
+source = 768 256 8 768 503 0 0 192 64
+source = 768 256 8 768 511 0 64 192 64
+```
+
+Only sources drawn in those rows match, so one image can serve two sections, and it
+is flipped when the game flips the sources. The image keeps its proportions, with
+its middle on the game's 2D art, buffer column 192 (the display shows 368 columns,
+so that is right of the window's middle). A narrower window crops its sides;
+in a wider one its edge columns carry on, and so does the left edge by about 2% at
+the aspect the image was made for. It takes the sources' colour as a tint, and its
+own alpha, rather than fading out like a `screen` picture.
+
 The match (`src/hw/texrep.c`) runs on quads in the overlay slots, in the GPU's
 decode order, so an image lands in the same place in the draw order as what it
 replaces and is squashed for widescreen like any overlay. The hardware renderer
