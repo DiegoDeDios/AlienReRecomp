@@ -100,8 +100,8 @@ jpg "$TMP/launcher_controls.png" "$OUT/controls.jpg" 1280
 
 echo "in-game overlay (opens a window, about 40 seconds)"
 # pause menu, then Settings scrolled to the Gameplay and Enemy damage rows
-keys="F2,WAIT20,SHOT,Down,Return"
-for i in $(seq 13); do keys="$keys,Down"; done
+keys="F2,WAIT20,SHOT,Down,Down,Down,Return"
+for i in $(seq 16); do keys="$keys,Down"; done
 keys="$keys,SHOT,Escape,Escape"
 rm -rf "$TMP/save" && mkdir -p "$TMP/save"
 "$BIN" --play --skip-intro --disc "$DISC" --save-dir "$TMP/save" "${NEW_GAME[@]}" \

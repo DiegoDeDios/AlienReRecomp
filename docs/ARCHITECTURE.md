@@ -123,8 +123,8 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   the game window before the emulated machine starts; it creates its own
   GPU device and releases the window to the game renderer when the player
   presses Start. It validates the chosen disc image (`discinfo.c`: cue sheet
-  resolution, `SYSTEM.CNF` must boot `SLUS_006.33`) and uses a loading
-  screen from the player's `PACK.BIN` as background art. Navigation is
+  resolution, `SYSTEM.CNF` must boot `SLUS_006.33`). Its background art is
+  `launcher_art.png` from the port's `textures` folder. Navigation is
   handled by the pages themselves (rows, columns in the bindings table) so
   keyboard and controller behave the same; mouse hover and clicks work too.
   Fonts come from the system (macOS: DIN, Helvetica; Windows: Bahnschrift,

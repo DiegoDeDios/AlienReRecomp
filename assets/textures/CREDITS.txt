@@ -1,4 +1,5 @@
 menu_band.png is made from Wall_15 of "Rusty Style Texture Pack 05" by llexandro,
-mirrored, recoloured and relit:
+mirrored, recoloured and relit. launcher_art.png has the same pack's Wall_11 behind
+the title logo, recoloured and relit:
 https://www.deviantart.com/llexandro/art/Rusty-Style-Texture-Pack-05-685785801
-The MIT License of this project does not cover it.
+The MIT License of this project does not cover them.

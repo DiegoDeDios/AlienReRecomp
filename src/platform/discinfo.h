@@ -1,7 +1,7 @@
 /*
  * Disc image selection for the launcher: resolve what the player picked
- * (cue sheet, track .bin or folder) to a cue sheet, check that it is the
- * supported game, and read title art from it.
+ * (cue sheet, track .bin or folder) to a cue sheet and check that it is the
+ * supported game.
  */
 #pragma once
 #include <stdbool.h>
@@ -35,13 +35,9 @@ typedef enum {
 bool disc_resolve(const char *path, char *cue, size_t n);
 
 /* Resolve and open the disc, check SYSTEM.CNF for SLUS_006.33. On success
- * the disc stays open (for disc_title_art). `msg` gets a short description
- * for the player either way. */
+ * the disc stays open. `msg` gets a short description for the player either
+ * way. */
 DiscStatus disc_check(const char *path, char *cue, size_t cue_n, char *msg, size_t msg_n);
-
-/* Title art from the open disc (a loading screen in PACK.BIN), as RGBA8.
- * Returns NULL if unavailable; free() the result. */
-uint8_t *disc_title_art(int *w, int *h);
 
 #ifdef __cplusplus
 }

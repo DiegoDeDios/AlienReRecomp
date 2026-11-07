@@ -94,9 +94,8 @@ If the game does not start, make sure your graphics drivers are up to date.
 
 Start the port, choose your disc image (`.cue`, one of its `.bin` tracks or
 the folder) and press **Start game**. The launcher checks that it is the USA
-release and shows the title art, read from your own disc. Settings and
-controls can be changed here or later in game, with the mouse, the keyboard
-or a controller.
+release. Settings and controls can be changed here or later in game, with the
+mouse, the keyboard or a controller.
 
 ![The launcher](docs/media/launcher.jpg)
 
@@ -448,7 +447,8 @@ game so far.
 * PGXP, originally by iCatButler for PCSX-R, for the idea behind precision
   geometry.
 * [Rusty Style Texture Pack 05](https://www.deviantart.com/llexandro/art/Rusty-Style-Texture-Pack-05-685785801)
-  by llexandro, the source of the HD menu bands (mirrored, recoloured and relit).
+  by llexandro, the source of the HD menu bands and the launcher's background
+  (recoloured and relit).
   The MIT License below does not cover this artwork.
 
 ## License

@@ -166,29 +166,34 @@ SDL_GPUTexture *upload_rgba(const uint8_t *px, int w, int h) {
     return t;
 }
 
+void load_art() {
+    const char *base = SDL_GetBasePath();
+    std::string path = std::string(base ? base : "") + "textures/launcher_art.png";
+    SDL_Surface *png = SDL_LoadPNG(path.c_str());
+    if (!png) {
+        SDL_Log("launcher: %s: %s", path.c_str(), SDL_GetError());
+        return;
+    }
+    SDL_Surface *rgba = SDL_ConvertSurface(png, SDL_PIXELFORMAT_RGBA32);
+    SDL_DestroySurface(png);
+    if (!rgba)
+        return;
+    L.art = upload_rgba((const uint8_t *)rgba->pixels, rgba->w, rgba->h);
+    L.art_w = rgba->w, L.art_h = rgba->h;
+    SDL_DestroySurface(rgba);
+}
+
 /* ---- disc ---- */
 void check_disc() {
     char cue[1024] = "";
     L.disc = disc_check(L.cfg->disc, cue, sizeof cue, L.disc_msg, sizeof L.disc_msg);
-    if (L.art) {
-        SDL_WaitForGPUIdle(L.dev);
-        SDL_ReleaseGPUTexture(L.dev, L.art);
-        L.art = nullptr;
+    if (L.disc != DISC_OK)
+        return;
+    if (strcmp(cue, L.cfg->disc) || strcmp(cue, L.saved->disc)) {
+        snprintf(L.cfg->disc, sizeof L.cfg->disc, "%s", cue);
+        mark(&L.cfg->disc);
     }
-    if (L.disc == DISC_OK) {
-        if (strcmp(cue, L.cfg->disc) || strcmp(cue, L.saved->disc)) {
-            snprintf(L.cfg->disc, sizeof L.cfg->disc, "%s", cue);
-            mark(&L.cfg->disc);
-        }
-        int w, h;
-        uint8_t *px = disc_title_art(&w, &h);
-        if (px) {
-            L.art = upload_rgba(px, w, h);
-            L.art_w = w, L.art_h = h;
-            free(px);
-        }
-        disc_close();
-    }
+    disc_close();
 }
 
 void SDLCALL on_pick(void *, const char *const *files, int) {
@@ -268,39 +273,15 @@ void header(ImDrawList *dl, const char *title, float cx, float y) {
 void background(ImDrawList *dl) {
     const ImVec2 S = L.S;
     dl->AddRectFilled(ImVec2(0, 0), S, C_BG);
-    if (L.art) {
-        /* cover the window, but keep at least 75% of the art's width (the
-         * logo) visible; the art fades into the background colour */
-        float sc = fmaxf(S.x / L.art_w, S.y / L.art_h);
-        sc = fminf(sc, S.x / (0.75f * L.art_w));
-        float w = L.art_w * sc, h = L.art_h * sc;
-        ImVec2 p0((S.x - w) * 0.5f, (S.y - h) * 0.5f - S.y * 0.08f);
-        dl->AddImage(ImTextureRef((ImTextureID)(intptr_t)L.art), p0, ImVec2(p0.x + w, p0.y + h));
-        /* hide the "uploading data" caption under the logo */
-        float y0 = p0.y + h * 0.565f, y1 = p0.y + h * 0.605f;
-        dl->AddRectFilledMultiColor(ImVec2(0, y0), ImVec2(S.x, y1), C_BG & 0x00FFFFFF,
-                                    C_BG & 0x00FFFFFF, C_BG, C_BG);
-        dl->AddRectFilled(ImVec2(0, y1), S, C_BG);
-        /* soften the edges */
-        dl->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(S.x, p0.y + h * 0.12f), C_BG,
-                                    C_BG, C_BG & 0x00FFFFFF, C_BG & 0x00FFFFFF);
-        if (p0.x > -1.0f) {
-            float e = 0.10f * w;
-            dl->AddRectFilledMultiColor(ImVec2(p0.x, 0), ImVec2(p0.x + e, S.y), C_BG,
-                                        C_BG & 0x00FFFFFF, C_BG & 0x00FFFFFF, C_BG);
-            dl->AddRectFilledMultiColor(ImVec2(p0.x + w - e, 0), ImVec2(p0.x + w, S.y),
-                                        C_BG & 0x00FFFFFF, C_BG, C_BG, C_BG & 0x00FFFFFF);
-        }
-    } else {
-        /* no disc yet: a plain rendition of the title */
-        float cx = S.x * 0.5f, y = S.y * 0.22f;
-        float s1 = S.y * 0.17f;
-        glow_bar(dl, cx, y + s1 * 0.93f, S.x * 0.40f, S.y * 0.035f, C_ACCENT, 0.45f);
-        glow_bar(dl, cx, y + s1 * 1.04f, S.x * 0.45f, 2.0f * L.U, C_ACCENT, 0.9f);
-        text_spaced(dl, L.f_title, s1, cx, y, C_TEXT, "ALIEN", s1 * 0.10f);
-        text_spaced(dl, L.f_title, s1 * 0.30f, cx, y + s1 * 1.02f, C_HOT, "RESURRECTION",
-                    s1 * 0.13f);
-    }
+    if (!L.art)
+        return;
+    /* The art is the top of a 16:9 picture and its edges are the background colour.
+     * It covers the window, but always shows the logo, which is under 80% of its width. */
+    float full_h = L.art_w * 9.0f / 16.0f;
+    float sc = fminf(fmaxf(S.x / L.art_w, S.y / full_h), S.x / (0.8f * L.art_w));
+    float w = L.art_w * sc, h = L.art_h * sc;
+    ImVec2 p0((S.x - w) * 0.5f, (S.y - full_h * sc) * 0.5f);
+    dl->AddImage(ImTextureRef((ImTextureID)(intptr_t)L.art), p0, ImVec2(p0.x + w, p0.y + h));
 }
 
 /* ---- main menu ---- */
@@ -1583,6 +1564,7 @@ extern "C" bool launcher_run(SDL_Window *win, Settings *cfg, Settings *saved, co
 
     if (cfg->fullscreen)
         SDL_SetWindowFullscreen(win, true);
+    load_art();
     check_disc();
     if (L.disc != DISC_OK)
         L.menu_sel = 1; /* "select disc image" */
