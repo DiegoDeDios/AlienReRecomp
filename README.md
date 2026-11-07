@@ -171,7 +171,7 @@ The port reads the controls right when the game needs them:
 
 ### Map
 
-Press **M** (**Select + D-pad down** on a controller) for a Doom-style outline map of the rooms you have visited in the current part of the level.
+Press **M** (**Select + D-pad down** on a controller) for a map of the rooms you have visited in the current part of the level.
 
 | The game | The map at the same moment |
 | --- | --- |
