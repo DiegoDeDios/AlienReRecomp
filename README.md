@@ -437,6 +437,9 @@ game so far.
   by Rodrigo Copetti, for PlayStation hardware reference.
 * PGXP, originally by iCatButler for PCSX-R, for the idea behind precision
   geometry.
+* [Rusty Style Texture Pack 05](https://www.deviantart.com/llexandro/art/Rusty-Style-Texture-Pack-05-685785801)
+  by llexandro, the source of the HD menu bands (mirrored, recoloured and relit).
+  The MIT License below does not cover this artwork.
 
 ## License
 
