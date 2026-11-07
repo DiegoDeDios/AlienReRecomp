@@ -237,6 +237,8 @@ and then has to recharge while switched off. With **Infinite flashlight**
   memory card images.
 * **Skip intro movies** starts straight at the title menu.
 * **Fast forward**: hold the backtick key.
+* Enemies leap the same height at 60 fps as at the original frame rate; the
+  extra frames used to send them much higher and further.
 * Invert Y is off by default (the original defaulted to on); the game's own
   option still changes it.
 * Screenshots with F12.

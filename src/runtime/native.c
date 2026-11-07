@@ -444,3 +444,39 @@ void ALIEN_80020848(CPU *c) {
     if (off)
         gte_write_ctrl(c, 26, h);
 }
+
+/* Enemy leaps. A leap starts with a push (obj+0x50, fading by 0.9 per vblank) on
+ * top of the velocity (obj+0x44). The move routine adds both to the position,
+ * which is right, but then stores the whole movement as the velocity, so each
+ * call also adds the push to it. More calls add more, and sooner, so at 60 fps
+ * enemies leap far higher and further than at the 20-30 fps the game was made
+ * for. At a step of 1 only a third of it counts, which gives the height of a step
+ * of 2 (worked out from the arc: 33 units for the leaps measured, see FINDINGS.md).
+ * Demos replay recorded steps and stay as they are. */
+#define LEAP_MOVE_RA 0x000698A8u
+#define OBJ_VELOCITY 0x44
+#define OBJ_PUSH     0x50
+
+static int32_t less_push(int32_t velocity, int32_t push) {
+    int32_t v = velocity - (int32_t)((int64_t)push * 2 / 3);
+    return (v < 0) == (velocity < 0) ? v : 0; /* a blocked move stays blocked */
+}
+
+void ALIEN_80050730__orig(CPU *c);
+void ALIEN_80050730(CPU *c) {
+    bool leap = (c->r[31] & 0x1FFFFFFFu) == LEAP_MOVE_RA && mem_r32(FRAME_STEP) == 1 &&
+                mem_r32(DEMO_PLAYBACK) == 0;
+    if (!leap) {
+        ALIEN_80050730__orig(c);
+        return;
+    }
+    uint32_t obj = c->r[4];
+    int32_t push[3];
+    for (int i = 0; i < 3; i++)
+        push[i] = (int32_t)mem_r32(obj + OBJ_PUSH + (uint32_t)i * 4);
+    ALIEN_80050730__orig(c);
+    for (int i = 0; i < 3; i++) {
+        uint32_t a = obj + OBJ_VELOCITY + (uint32_t)i * 4;
+        mem_w32(a, (uint32_t)less_push((int32_t)mem_r32(a), push[i]));
+    }
+}
