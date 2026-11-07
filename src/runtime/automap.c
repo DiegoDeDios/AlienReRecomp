@@ -34,7 +34,7 @@
 #define MAX_DEPTH      128
 #define MAX_STEPS      2000
 
-#define SLICE_ABOVE    30.0f       /* above the player's origin: clear of low obstacles */
+#define SLICE_DROP     30.0f       /* below the player's origin, y grows upwards */
 #define NEW_FLOOR      48.0f       /* climbed this far: slice again */
 #define PROBE          2.0f        /* how far behind an edge to look for solid */
 #define MIN_EDGE       0.5f
@@ -261,7 +261,7 @@ bool automap_view(AutomapView *view) {
         g_slice_id = id;
         g_slice_seen = seen;
         g_slice_y = y;
-        slice_rooms(seen, y - SLICE_ABOVE);
+        slice_rooms(seen, y - SLICE_DROP);
     }
     *view = (AutomapView){g_segs, g_nsegs, x, z};
     return true;

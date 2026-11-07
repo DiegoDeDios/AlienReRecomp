@@ -346,7 +346,7 @@ The walls come from the collision BSP of the current section, which the game
 keeps in RAM (format in `FINDINGS.md`). Slicing it at one height clips the
 room's box against each node down to the leaves, leaving 2D regions open at
 that height; an edge of one with solid behind it is a wall. The slice is taken
-30 units above the player's origin and redone when the rooms seen change or the
+30 units below the player's origin and redone when the rooms seen change or the
 player has climbed or dropped 48 units, so it stays put on stairs and shows one
 floor. It uses the first hull, and only leaf -2 counts as solid: the other values
 along room seams would otherwise draw as walls.

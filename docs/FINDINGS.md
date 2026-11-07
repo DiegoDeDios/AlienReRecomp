@@ -54,7 +54,7 @@ only a few nodes), `+0x20` rooms, `+0x32` u16 room count (31 at most on the disc
   meaning unknown.
 * `0x80035F58` finds the room holding a point; -1 from `0x80026B3C` means inside.
 * Sections have their own coordinates (nearly all start at 10, 10, 10). y grows
-  downwards. Facing: at yaw 2048 the player walks towards -z and strafes right
+  upwards. Facing: at yaw 2048 the player walks towards -z and strafes right
   towards +x; turning right raises yaw, so the walking direction is (-sin, cos).
 
 ## Textures and images
