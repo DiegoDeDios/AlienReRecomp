@@ -49,6 +49,7 @@ typedef struct {
     int blend;      /* -1 none, 0..3 semi mode */
     uint32_t pass;  /* 0 all, 1 opaque texels, 2 stp texels */
     int sx, sy, sw, sh; /* scissor in native pixels */
+    int image;          /* replacement image + 1, 0 = game textures */
 } DrawCmd;
 
 #define MAX_VERTS 65536
@@ -56,6 +57,7 @@ typedef struct {
 /* upload staging: room for several flushes / uploads per frame */
 #define VTB_SIZE (4u * MAX_VERTS * (uint32_t)sizeof(HwVertex))
 #define TEX_TB_SIZE (8u * 1024u * 1024u)
+#define MAX_IMAGES 64
 
 static struct {
     SDL_GPUDevice *dev;
@@ -69,7 +71,10 @@ static struct {
     SDL_GPUGraphicsPipeline *draw_pipe[5]; /* none, mode0..3 */
     SDL_GPUGraphicsPipeline *blit_pipe;
     SDL_GPUGraphicsPipeline *disp_pipe, *disp_off_pipe;
-    SDL_GPUSampler *nearest, *linear;
+    SDL_GPUSampler *nearest, *linear, *image_sampler;
+    SDL_GPUGraphicsPipeline *image_pipe;
+    SDL_GPUTexture *images[MAX_IMAGES];
+    int nimages;
     SDL_GPUCommandBuffer *cmd;
     HwVertex verts[MAX_VERTS];
     uint32_t nverts;
@@ -131,8 +136,21 @@ static SDL_GPUColorTargetBlendState blend_state(int mode) {
     return b;
 }
 
-static SDL_GPUGraphicsPipeline *make_draw_pipeline(SDL_GPUShader *vs,
-                                                   SDL_GPUShader *fs, int mode) {
+/* premultiplied alpha over the picture, leaving the target's alpha (mask bit) */
+static SDL_GPUColorTargetBlendState image_blend_state(void) {
+    SDL_GPUColorTargetBlendState b = {0};
+    b.enable_blend = true;
+    b.src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    b.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    b.color_blend_op = SDL_GPU_BLENDOP_ADD;
+    b.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+    b.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    b.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+    return b;
+}
+
+static SDL_GPUGraphicsPipeline *make_draw_pipeline(SDL_GPUShader *vs, SDL_GPUShader *fs,
+                                                   SDL_GPUColorTargetBlendState blend) {
     SDL_GPUVertexBufferDescription vbd = {
         .slot = 0, .pitch = sizeof(HwVertex),
         .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX};
@@ -145,7 +163,7 @@ static SDL_GPUGraphicsPipeline *make_draw_pipeline(SDL_GPUShader *vs,
     };
     SDL_GPUColorTargetDescription ctd = {
         .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-        .blend_state = blend_state(mode)};
+        .blend_state = blend};
     SDL_GPUGraphicsPipelineCreateInfo ci = {
         .vertex_shader = vs,
         .fragment_shader = fs,
@@ -341,6 +359,17 @@ static void flush_draws(void) {
     uint32_t cur_pass = 99;
     for (uint32_t i = 0; i < H.ndraws; i++) {
         DrawCmd *d = &H.draws[i];
+        if (d->image) {
+            SDL_BindGPUGraphicsPipeline(rp, H.image_pipe);
+            SDL_GPUTextureSamplerBinding is = {H.images[d->image - 1], H.image_sampler};
+            SDL_BindGPUFragmentSamplers(rp, 0, &is, 1);
+            SDL_Rect isc = {d->sx * H.S, d->sy * H.S, d->sw * H.S, d->sh * H.S};
+            SDL_SetGPUScissor(rp, &isc);
+            SDL_DrawGPUPrimitives(rp, d->count, 1, d->first, 0);
+            SDL_BindGPUFragmentSamplers(rp, 0, &ts, 1);
+            cur_blend = -2;
+            continue;
+        }
         if (d->blend != cur_blend) {
             SDL_BindGPUGraphicsPipeline(rp, H.draw_pipe[d->blend + 1]);
             if (d->blend == 0) {
@@ -424,7 +453,7 @@ static void push_draw(int blend, uint32_t pass, uint32_t first, uint32_t count,
         return;
     if (H.ndraws) {
         DrawCmd *l = &H.draws[H.ndraws - 1];
-        if (l->blend == blend && l->pass == pass && l->sx == sx && l->sy == sy &&
+        if (!l->image && l->blend == blend && l->pass == pass && l->sx == sx && l->sy == sy &&
             l->sw == sw && l->sh == sh && l->first + l->count == first) {
             l->count += count;
             return;
@@ -432,7 +461,7 @@ static void push_draw(int blend, uint32_t pass, uint32_t first, uint32_t count,
     }
     if (H.ndraws >= MAX_DRAWS)
         flush_draws();
-    H.draws[H.ndraws++] = (DrawCmd){first, count, blend, pass, sx, sy, sw, sh};
+    H.draws[H.ndraws++] = (DrawCmd){first, count, blend, pass, sx, sy, sw, sh, 0};
 }
 
 static uint32_t make_info0(uint16_t tpage, uint32_t flags, const GpuState *s) {
@@ -938,6 +967,62 @@ static void hw_vram_reload(void) {
     H.dirty = false;
 }
 
+static void hw_image_quad(const GpuState *s, int image, const float xy[8], const float uv[8],
+                          uint32_t flags, const uint8_t rgba[4]) {
+    int sw = s->area_x2 - s->area_x1 + 1, sh = s->area_y2 - s->area_y1 + 1;
+    if (image < 0 || image >= H.nimages || sw <= 0 || sh <= 0)
+        return;
+    if (H.nverts + 6 > MAX_VERTS || H.ndraws >= MAX_DRAWS)
+        flush_draws();
+    static const int order[6] = {0, 1, 2, 1, 2, 3};
+    uint32_t first = H.nverts;
+    for (int i = 0; i < 6; i++) {
+        int k = order[i];
+        H.verts[H.nverts++] = (HwVertex){.x = ws_x(s, flags, xy[k * 2]), .y = xy[k * 2 + 1],
+                                         .r = rgba[0], .g = rgba[1], .b = rgba[2], .a = rgba[3],
+                                         .u = uv[k * 2], .v = uv[k * 2 + 1], .w = 1.0f};
+    }
+    H.draws[H.ndraws++] = (DrawCmd){first, 6, -1, 0, s->area_x1, s->area_y1, sw, sh, image + 1};
+    mark_dirty(s->area_x1, s->area_y1, s->area_x2, s->area_y2);
+}
+
+int render_add_image(const void *rgba, int w, int h, int pitch) {
+    if (!H.dev || H.cfg.software || H.nimages >= MAX_IMAGES || w <= 0 || h <= 0)
+        return -1;
+    Uint32 levels = 1;
+    for (int m = w > h ? w : h; m > 1; m /= 2)
+        levels++;
+    SDL_GPUTextureCreateInfo ti = {.type = SDL_GPU_TEXTURETYPE_2D,
+                                   .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+                                   .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+                                   .width = (Uint32)w, .height = (Uint32)h,
+                                   .layer_count_or_depth = 1, .num_levels = levels};
+    SDL_GPUTexture *t = SDL_CreateGPUTexture(H.dev, &ti);
+    SDL_GPUTransferBufferCreateInfo bi = {.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+                                          .size = (Uint32)(w * h * 4)};
+    SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(H.dev, &bi);
+    if (!t || !tb) {
+        LOGW("render", "replacement image: %s", SDL_GetError());
+        if (t) SDL_ReleaseGPUTexture(H.dev, t);
+        if (tb) SDL_ReleaseGPUTransferBuffer(H.dev, tb);
+        return -1;
+    }
+    uint8_t *dst = SDL_MapGPUTransferBuffer(H.dev, tb, false);
+    for (int y = 0; y < h; y++)
+        memcpy(dst + y * w * 4, (const uint8_t *)rgba + y * pitch, (size_t)w * 4);
+    SDL_UnmapGPUTransferBuffer(H.dev, tb);
+    ensure_cmd();
+    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(H.cmd);
+    SDL_GPUTextureTransferInfo src = {tb, 0, (Uint32)w, (Uint32)h};
+    SDL_GPUTextureRegion r = {.texture = t, .w = (Uint32)w, .h = (Uint32)h, .d = 1};
+    SDL_UploadToGPUTexture(cp, &src, &r, false);
+    SDL_EndGPUCopyPass(cp);
+    SDL_GenerateMipmapsForGPUTexture(H.cmd, t);
+    SDL_ReleaseGPUTransferBuffer(H.dev, tb);
+    H.images[H.nimages] = t;
+    return H.nimages++;
+}
+
 const GpuBackend g_gpu_hw = {
     .name = "hardware",
     .triangle = hw_triangle,
@@ -949,6 +1034,7 @@ const GpuBackend g_gpu_hw = {
     .vram_sync = hw_vram_sync,
     .end_frame = NULL,
     .vram_reload = hw_vram_reload,
+    .image_quad = hw_image_quad,
 };
 
 /* ------------------------------------------------------------------ */
@@ -1184,11 +1270,13 @@ bool render_init(SDL_Window *win, const RenderConfig *cfg) {
     H.S = cfg->software ? 1 : (cfg->scale < 1 ? 1 : cfg->scale);
     H.win = win;
     static const ShaderBlob *const shaders[] = {&k_draw_vert, &k_draw_frag, &k_blit_vert,
-                                                &k_blit_frag, &k_disp_vert, &k_disp_frag};
+                                                &k_blit_frag, &k_disp_vert, &k_disp_frag,
+                                                &k_hd_frag};
     static const SDL_GPUShaderStage stages[] = {
         SDL_GPU_SHADERSTAGE_VERTEX, SDL_GPU_SHADERSTAGE_FRAGMENT, SDL_GPU_SHADERSTAGE_VERTEX,
-        SDL_GPU_SHADERSTAGE_FRAGMENT, SDL_GPU_SHADERSTAGE_VERTEX, SDL_GPU_SHADERSTAGE_FRAGMENT};
-    render_require_shaders(shaders, stages, 6);
+        SDL_GPU_SHADERSTAGE_FRAGMENT, SDL_GPU_SHADERSTAGE_VERTEX, SDL_GPU_SHADERSTAGE_FRAGMENT,
+        SDL_GPU_SHADERSTAGE_FRAGMENT};
+    render_require_shaders(shaders, stages, 7);
     H.dev = render_create_device();
     render_require_shaders(NULL, NULL, 0);
     if (!H.dev) {
@@ -1248,11 +1336,17 @@ bool render_init(SDL_Window *win, const RenderConfig *cfg) {
     H.nearest = SDL_CreateGPUSampler(H.dev, &sn);
     sn.min_filter = sn.mag_filter = SDL_GPU_FILTER_LINEAR;
     H.linear = SDL_CreateGPUSampler(H.dev, &sn);
+    sn.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR;
+    sn.max_lod = 16.0f;
+    H.image_sampler = SDL_CreateGPUSampler(H.dev, &sn);
 
     SDL_GPUShader *vs = make_shader(&k_draw_vert, SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
     SDL_GPUShader *fs = make_shader(&k_draw_frag, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
     for (int m = -1; m < 4; m++)
-        H.draw_pipe[m + 1] = make_draw_pipeline(vs, fs, m);
+        H.draw_pipe[m + 1] = make_draw_pipeline(vs, fs, blend_state(m));
+    SDL_ReleaseGPUShader(H.dev, fs);
+    fs = make_shader(&k_hd_frag, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 0);
+    H.image_pipe = make_draw_pipeline(vs, fs, image_blend_state());
     SDL_ReleaseGPUShader(H.dev, vs);
     SDL_ReleaseGPUShader(H.dev, fs);
     H.blit_pipe = make_blit_pipeline();

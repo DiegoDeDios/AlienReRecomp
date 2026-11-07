@@ -252,6 +252,9 @@ and then has to recharge while switched off. With **Infinite flashlight**
 * **Fast forward**: hold the backtick key.
 * Enemies leap the same height at 60 fps as at the original frame rate; the
   extra frames used to send them much higher and further.
+* **HD textures**: new high resolution artwork in place of the game's own, for now
+  the title logo. You can switch them off, or add your own from a `textures`
+  folder (see [Architecture](docs/ARCHITECTURE.md#texture-replacement)).
 * Flickering lights flash at most 3 times a second, for players sensitive to
   flashing, and rotating lights turn at their 30 fps speed.
 * Invert Y is off by default (the original defaulted to on); the game's own

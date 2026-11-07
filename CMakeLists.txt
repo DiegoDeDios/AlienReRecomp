@@ -91,6 +91,7 @@ set(RUNTIME_SRC
   src/hw/dma.c
   src/hw/timers.c
   src/hw/gpu.c
+  src/hw/texrep.c
   src/hw/gpu_sw.c
   src/hw/cdrom.c
   src/hw/spu.c
@@ -98,6 +99,7 @@ set(RUNTIME_SRC
   src/hw/mdec.c
   src/render/gpu_hw.c
   src/render/gpu_device.c
+  src/render/texpack.c
   src/platform/main.c
   src/platform/settings.c
   src/platform/discinfo.c
@@ -172,3 +174,12 @@ if(WIN32)
   set_target_properties(alien PROPERTIES OUTPUT_NAME AlienResurrection WIN32_EXECUTABLE TRUE)
   target_link_options(alien PRIVATE -static -Wl,--stack,16777216)
 endif()
+
+# Texture pack next to the program (in the bundle's Resources on macOS)
+if(PORT_MACOS_BUNDLE)
+  set(PORT_TEXTURES_DIR $<TARGET_BUNDLE_CONTENT_DIR:alien>/Resources/textures)
+else()
+  set(PORT_TEXTURES_DIR $<TARGET_FILE_DIR:alien>/textures)
+endif()
+add_custom_command(TARGET alien POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/assets/textures ${PORT_TEXTURES_DIR})

@@ -48,6 +48,11 @@ const char *render_device_name(void);
 typedef void (*RenderOverlayFn)(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *target,
                                 int w, int h);
 void render_set_overlay(RenderOverlayFn fn);
+/* A replacement image for the hardware renderer, RGBA with alpha premultiplied:
+ * returns its number for image_quad, or -1 */
+int render_add_image(const void *rgba, int w, int h, int pitch);
+/* load replacements.ini and its images from a folder, if it has one (texpack.c) */
+void render_load_texture_pack(const char *dir);
 SDL_GPUDevice *render_gpu_device(void);
 SDL_GPUTextureFormat render_window_format(void);
 /* Read back the window contents (game image + overlay) at the window's

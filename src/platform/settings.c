@@ -118,6 +118,7 @@ void settings_defaults(Settings *s) {
     s->aspect_w = 16, s->aspect_h = 9;
     s->internal_scale = 4;
     s->pgxp = true;
+    s->hd_textures = true;
     s->vsync = true;
     snprintf(s->gpu_driver, sizeof s->gpu_driver, "auto");
     s->smooth = true;
@@ -318,6 +319,7 @@ bool settings_load(Settings *s, const char *path) {
                     s->aspect_w = w, s->aspect_h = h;
             } else if (!strcmp(k, "internal_scale")) s->internal_scale = clampi(atoi(v), 1, 8);
             else if (!strcmp(k, "pgxp")) s->pgxp = parse_bool(v);
+            else if (!strcmp(k, "hd_textures")) s->hd_textures = parse_bool(v);
             else if (!strcmp(k, "vsync")) s->vsync = parse_bool(v);
             else if (!strcmp(k, "smooth")) s->smooth = parse_bool(v);
             else if (!strcmp(k, "fullscreen")) s->fullscreen = parse_bool(v);
@@ -388,10 +390,10 @@ bool settings_save(const Settings *s, const char *path) {
     else
         snprintf(fov, sizeof fov, "original");
     fprintf(f, "[video]\nwidescreen = %s\naspect = %d:%d\nfov = %s\ninternal_scale = %d\n"
-               "pgxp = %s\nvsync = %s\nsmooth = %s\nfullscreen = %s\nshow_fps = %s\n"
+               "pgxp = %s\nhd_textures = %s\nvsync = %s\nsmooth = %s\nfullscreen = %s\nshow_fps = %s\n"
                "gpu_driver = %s\n\n",
             tf[s->widescreen], s->aspect_w, s->aspect_h, fov, s->internal_scale,
-            tf[s->pgxp], tf[s->vsync], tf[s->smooth], tf[s->fullscreen], tf[s->show_fps],
+            tf[s->pgxp], tf[s->hd_textures], tf[s->vsync], tf[s->smooth], tf[s->fullscreen], tf[s->show_fps],
             s->gpu_driver);
     fprintf(f, "[gameplay]\nsprint = %s\nsprint_speed = %d\ninfinite_flashlight = %s\n"
                "quick_save = %s\ncpu_speed = %d\n\n",

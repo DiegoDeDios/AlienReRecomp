@@ -171,6 +171,8 @@ Options override `config.ini` for one run; most are for testing.
 | `--cpu-speed PCT` | emulated CPU speed, raised automatically in busy scenes (default 300 = steady 60 fps; 100 = original hardware, never raised) |
 | `--no-vsync` | present without vsync (lowest latency, may tear) |
 | `--no-pgxp` | original PS1 geometry: integer vertices and affine (warping) textures |
+| `--no-hd-textures` | the game's own textures instead of the HD replacements |
+| `--textures DIR` | use only this texture pack folder |
 | `--sprint-speed PCT` | player speed while sprinting (default 190; 100 turns sprint off) |
 | `--no-infinite-flashlight` | the flashlight battery runs down and recharges as in the original |
 | `--enemy-damage PCT`, `--enemy-damage GROUP=PCT` | damage taken from all enemies / one kind (`alien_warriors`, `facehuggers`, `chestbursters`, `queen`, `newborn`, `marines`, `sentry_tank`, `acid_blood`), 0–200, default 100; repeatable |
@@ -208,6 +210,7 @@ src/render/       SDL GPU hardware renderer and presentation; shaders/ (GLSL)
 src/platform/     SDL3 frontend: launcher (Dear ImGui), settings/config.ini,
                   input bindings, window, audio, pacing, screenshots
 third_party/      Dear ImGui (MIT), vendored
+assets/textures/  texture pack shipped with the port (new artwork, no game data)
 cmake/, packaging/  Windows cross-compilation toolchain and release files
 docs/             building, architecture and reverse-engineering notes
 docs/media/       README screenshots and animations

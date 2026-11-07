@@ -52,6 +52,7 @@ typedef struct Settings {
     int fov;                 /* horizontal field of view in degrees, 0 = original */
     int internal_scale;      /* GPU internal resolution multiplier */
     bool pgxp;
+    bool hd_textures;        /* texture pack: high resolution replacements */
     bool vsync;
     bool smooth;
     bool fullscreen;

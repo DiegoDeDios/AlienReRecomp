@@ -74,6 +74,10 @@ typedef struct GpuBackend {
     void (*end_frame)(void);
     /* g_vram was replaced as a whole (save state loaded): take it over */
     void (*vram_reload)(void);
+    /* a quad from a replacement image, in the place of game textures: corners
+     * xy and uv (0..1) in GVtx order; NULL if the backend cannot do it */
+    void (*image_quad)(const GpuState *s, int image, const float xy[8], const float uv[8],
+                       uint32_t flags, const uint8_t rgba[4]);
 } GpuBackend;
 
 extern uint16_t g_vram[VRAM_W * VRAM_H];

@@ -864,6 +864,11 @@ void draw_settings(ImDrawList *dl) {
                "Removes the PlayStation's wobbling polygons and warping textures by keeping "
                "vertices at full precision and correcting texture perspective."))
         mark(&c->pgxp);
+    hw_only_tag();
+    if (toggle("HD textures", &c->hd_textures,
+               "Draws new high resolution artwork in place of the game's own, such as the "
+               "title logo. Off shows the original textures."))
+        mark(&c->hd_textures);
     ImGui::EndDisabled();
     if (toggle("Smooth scaling", &c->smooth,
                "Filter the image when scaling it to the window. Off gives sharp, square pixels."))

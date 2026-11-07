@@ -26,6 +26,7 @@
 #include "../runtime/psx.h"
 #include "../runtime/pgxp.h"
 #include "../runtime/savestate.h"
+#include "../hw/texrep.h"
 #include "../runtime/widescreen.h"
 #include "discinfo.h"
 #include "launcher.h"
@@ -74,6 +75,7 @@ static struct {
     bool no_launcher;
     const char *launcher_shot, *launcher_page, *launcher_keys;
     const char *overlay_shot;
+    const char *textures;   /* texture pack folder, instead of the usual ones */
 } opt = {.max_frames = -1, .scale = 3.0f, .render_scale = 4, .smooth = true,
        .mouse_sens = 6.0f, .fuzz_from = -1, .aspect = 16.0f / 9.0f};
 
@@ -581,6 +583,10 @@ static void apply_live(void) {
         g_sprint_pct = c->sprint ? c->sprint_pct : 100;
         LOGI("overlay", "sprint speed %d%%", g_sprint_pct);
     }
+    if (c->hd_textures != a->hd_textures) {
+        g_texrep_on = c->hd_textures;
+        LOGI("overlay", "HD textures %s", c->hd_textures ? "on" : "off");
+    }
     if (c->infinite_flashlight != a->infinite_flashlight) {
         g_infinite_flashlight = c->infinite_flashlight;
         LOGI("overlay", "infinite flashlight %s", c->infinite_flashlight ? "on" : "off");
@@ -756,6 +762,26 @@ static void script_tick(void) {
 
 /* ------------------------------------------------------------------ */
 /* in-game overlay                                                     */
+
+/* a player's own pack, then the one that comes with the port: rules are tried in
+ * the order they were loaded */
+static void load_texture_packs(void) {
+    g_texrep_on = g_cfg.hd_textures;
+    if (!g_gpu_ok)
+        return;
+    if (opt.textures) {
+        render_load_texture_pack(opt.textures);
+        return;
+    }
+    char path[1100];
+    snprintf(path, sizeof path, "%s/textures", platform_data_dir());
+    render_load_texture_pack(path);
+    const char *base = SDL_GetBasePath();
+    if (base) {
+        snprintf(path, sizeof path, "%stextures", base);
+        render_load_texture_pack(path);
+    }
+}
 
 /* a quick save / load message and the map, over the game; the map closes
  * when the player leaves play (pause menu, cutscene) */
@@ -1178,6 +1204,10 @@ static void parse_args(int argc, char **argv) {
             g_interp_only = true;
         } else if (!strcmp(a, "--no-pgxp")) {
             g_cfg.pgxp = false;
+        } else if (!strcmp(a, "--no-hd-textures")) {
+            g_cfg.hd_textures = false;
+        } else if (!strcmp(a, "--textures") && v) {
+            opt.textures = v, i++;
         } else if (!strcmp(a, "--no-infinite-flashlight")) {
             g_cfg.infinite_flashlight = false;
         } else if (!strcmp(a, "--fov") && v) {
@@ -1471,6 +1501,7 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
+    load_texture_packs();
     g_rgb = malloc(1024 * 512 * 3);
 
     static CPU cpu;

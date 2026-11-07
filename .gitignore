@@ -18,6 +18,7 @@ build*/
 out/
 *.png
 !packaging/icon/*.png
+!assets/textures/*.png
 *.wav
 saves/
 

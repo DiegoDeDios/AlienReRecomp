@@ -384,6 +384,36 @@ vblanks, 3 times a second, shared across these lights: a later rise is undone. T
 covers these lights only, not muzzle flashes, explosions or other effects. Demos are
 left alone, because a flash held back changes the use of random numbers.
 
+### Texture replacement
+
+2D sprites can be drawn from high resolution images. A pack is a folder with a
+`replacements.ini` and PNGs (`src/render/texpack.c`):
+
+```ini
+[main menu logo]
+image = main_menu_logo.png
+screen = 44 6 295 65
+source = 896 256 8 768 510 0 0 131 42
+```
+
+A `source` is one texture of the game: page position in VRAM, bits per texel,
+palette position in VRAM and rectangle in the page. Without `screen`, each source
+is a sprite whose image is drawn where the game draws it, tinted by its vertex
+colour. With `screen` (x, y, w, h in the 384×240 buffer) the sources are layers of
+one picture: the first drawn in a frame draws the image at that spot and the rest
+are skipped; the image's opacity follows the brightest layer of the last frame,
+which is how the game fades them. Rules are tried in load order, so a player's
+`<data folder>/textures` goes before the port's `textures` next to the program,
+which comes from `assets/textures` (`--textures DIR` uses only that folder).
+
+The match (`src/hw/texrep.c`) runs on quads in the overlay slots, in the GPU's
+decode order, so an image lands in the same place in the draw order as what it
+replaces and is squashed for widescreen like any overlay. The hardware renderer
+draws it with its own pipeline (`hd.frag`) over the VRAM target, with mipmaps,
+premultiplied alpha and the target's alpha (the mask bit) left alone. It renders at
+the internal resolution, so a sharp logo needs a high **Internal resolution**. The
+software renderer has no such path and keeps the original textures.
+
 ### Infinite flashlight
 
 Ripley carries a flashlight from the second level on (inventory item 76,

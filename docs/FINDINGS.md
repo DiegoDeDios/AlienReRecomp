@@ -87,6 +87,10 @@ only a few nodes), `+0x20` rooms, `+0x32` u16 room count (31 at most on the disc
   height`, 8 bytes, then 15-bit pixels (512×240 and 384×240).
   `FEGRUK05/06.TIM` are standard 16-bit 256×256 TIMs placed at VRAM
   (768, 256).
+* **Title logo:** six 8-bit layers blended in the overlay slots at slot 2: dark
+  `AL` and `EN` (131×42, page (896, 256)), a bright layer (250×30) and three
+  `RESURRECTION` strips (255×24, page (768, 256)), with the palettes at y 505–510.
+  The title's 3D corridor is level 30, section 0.
 * The character files (`*.CVS`) hold no texture data; character skins are
   probably in each level's TXF (inferred, not yet checked with a character
   on screen).
