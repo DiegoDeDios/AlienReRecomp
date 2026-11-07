@@ -252,6 +252,8 @@ and then has to recharge while switched off. With **Infinite flashlight**
 * **Fast forward**: hold the backtick key.
 * Enemies leap the same height at 60 fps as at the original frame rate; the
   extra frames used to send them much higher and further.
+* Flickering lights flash and rotate at their 30 fps rate; at 60 fps they went
+  twice as fast.
 * Invert Y is off by default (the original defaulted to on); the game's own
   option still changes it.
 * Screenshots with F12.

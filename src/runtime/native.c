@@ -660,3 +660,30 @@ void ALIEN_80050730(CPU *c) {
         mem_w32(a, (uint32_t)less_push((int32_t)mem_r32(a), push[i]));
     }
 }
+
+/* Flickering lights. The routine for lights attached to level objects (0x80080FE4)
+ * has modes that act once per call: random flashes (7), strobes (0, 1, 5) and
+ * rotating beacons (6). At 60 fps they run twice as often as at 30 and a flash
+ * lasts half as long, about ten full-scene flashes a second. At a step of 1 they
+ * run every other vblank with a step of 2, as at 30 fps. Other modes use the step
+ * already, and demos replay recorded steps. */
+#define LIGHT_MODES_PER_CALL 0xE3u /* bits 0, 1, 5, 6, 7 */
+#define VBLANK_COUNT         0x800A86A8u /* gp+0x4134: counter at this frame */
+
+static bool light_acts_per_call(uint32_t obj) {
+    uint32_t mode = mem_r16(mem_r32(obj + 124) + 46);
+    return mode < 8 && ((LIGHT_MODES_PER_CALL >> mode) & 1);
+}
+
+void ALIEN_80080FE4__orig(CPU *c);
+void ALIEN_80080FE4(CPU *c) {
+    if (mem_r32(FRAME_STEP) != 1 || mem_r32(DEMO_PLAYBACK) || !light_acts_per_call(c->r[4])) {
+        ALIEN_80080FE4__orig(c);
+        return;
+    }
+    if (mem_r32(VBLANK_COUNT) & 1)
+        return;
+    mem_w32(FRAME_STEP, 2);
+    ALIEN_80080FE4__orig(c);
+    mem_w32(FRAME_STEP, 1);
+}

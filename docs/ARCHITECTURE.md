@@ -247,7 +247,7 @@ as tested.
   rate (59.82 Hz).
 * The emulated CPU runs at 300% by default (`--cpu-speed`), which keeps heavy
   scenes at 60 fps. The game scales its logic by the number of vblanks elapsed
-  since the previous frame, with an exception found so far in enemy leaps (below).
+  since the previous frame, with the exceptions found so far in enemy leaps and flickering lights (below).
 * That setting is a floor: the budget adapts to the game
   (`src/runtime/native.c`). The frame routine ends by waiting for the next
   refresh (`0x80030E68`, wrapped), so the instructions between two of those
@@ -372,6 +372,14 @@ not, and with the frame rate boost leaps came out several times as high and far
 when called by the leap update at a step of 1, takes two thirds of the leap's
 push back out of the velocity the routine stored; see `FINDINGS.md`. Steps of 2 or
 more and demos are left alone, so the original frame rates behave as they did.
+
+### Flickering lights (`src/runtime/native.c`)
+
+Lights attached to level objects are updated by `0x80080FE4`, and some of its
+modes act once per call, so at 60 fps random flashes came twice as often and half
+as long. A wrapper runs those modes (0, 1, 5, 6, 7) every other vblank at a step
+of 1, with the step set to 2 for the call so the animation clock in the same
+routine keeps its speed. Steps of 2 or more and demos are left alone.
 
 ### Infinite flashlight
 

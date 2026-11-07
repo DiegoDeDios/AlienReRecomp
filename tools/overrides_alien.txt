@@ -8,6 +8,7 @@
 800625cc wrap  # flashlight update (infinite flashlight)
 800524f0 wrap  # add a pickup to the inventory (ammo rebalance)
 80050730 wrap  # move an object (enemy leaps at 60 fps)
+80080fe4 wrap  # lights on level objects (flicker at 60 fps)
 8004dea8 wrap  # deliver a message to an object (enemy attack damage)
 800519d0 wrap  # apply damage to an object (acid damage to the player)
 8005ecbc wrap  # player update (camera: mouse look and right stick)

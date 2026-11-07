@@ -218,6 +218,15 @@ only a few nodes), `+0x20` rooms, `+0x32` u16 room count (31 at most on the disc
   near-plane clipping: a corner behind the camera gets SZ = 0 and an SXY
   clamped to the edge of the GTE's range, so such a quad's screen
   coordinates, its subdivided midpoints and its NCLIP winding are garbage.
+* Dynamic lights: a linked list at `gp+116`, updated by `0x8001DB54`; `+0x10` owner
+  object, `+0x18` position, `+0x22` intensity, `+0x26` direction. The flashlight is
+  one, owned by the player (its slow pulse keeps its timing at any frame rate).
+  Lights on level objects are driven by `0x80080FE4(obj)`, mode `[[obj+124]+46]`,
+  jump table at `0x800A3B90`: 0 and 5 toggle intensity 128/64, 1 toggles 384/128,
+  2 to 4 fade on the frame step, 6 rotates a beam by 32 per call, 7 flashes (384 for
+  one call, otherwise a 1 in 4 chance per call, with `0x80080F34` playing a sound),
+  8 stays on. Modes 0, 1, 5, 6 and 7 ignore the frame step. Measured on mode 7 over
+  10 s: 49 flashes of 2 vblanks at 30 fps, 103 of 1 vblank at 60 fps.
 * Enemy leaps (`0x80069724`, for each object in the leap): y grows upwards.
   Gravity takes 2457 per vblank from the y velocity (`obj+0x48`, velocity is
   `+0x44` to `+0x4C`), and a target of position + velocity × step goes to the move
