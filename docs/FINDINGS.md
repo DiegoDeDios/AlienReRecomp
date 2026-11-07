@@ -218,6 +218,19 @@ only a few nodes), `+0x20` rooms, `+0x32` u16 room count (31 at most on the disc
   near-plane clipping: a corner behind the camera gets SZ = 0 and an SXY
   clamped to the edge of the GTE's range, so such a quad's screen
   coordinates, its subdivided midpoints and its NCLIP winding are garbage.
+* Enemy leaps (`0x80069724`, for each object in the leap): y grows upwards.
+  Gravity takes 2457 per vblank from the y velocity (`obj+0x48`, velocity is
+  `+0x44` to `+0x4C`), and a target of position + velocity × step goes to the move
+  routine `0x80050730`. That adds the push (`+0x50` to `+0x58`, set by `0x800505DC`,
+  faded by 0.9 per vblank in the object loop at `0x8003BE34`) × step to the target
+  and stores the movement ÷ step as the velocity, so the push is added to the
+  velocity once per call, not per vblank. For one leap of an alien (type 21) in the
+  first attract demo's scene, height and distance by frame step: step 3: 41, 0;
+  step 2: 68, 0; step 1: 98, 257. Two more leaps at step 1 reached 385 high and
+  1417 far, against 64 and 416 at the original speed. A model of those steps reproduces the logged moves exactly. Keeping a
+  third of the push at a step of 1 gives 68 high on all three leaps measured, and
+  landings within a few vblanks of a step of 2. A scripted alien path (obj 38 of
+  that scene) did not change with the step.
 * Frame step: the per-frame routine at `0x8001FBE0` reads `VSync(-1)`,
   computes vblanks elapsed since the previous frame, clamps it to 1..8 and
   stores it at `gp+0x4130` for the game logic (`gp+0x4134` holds the last

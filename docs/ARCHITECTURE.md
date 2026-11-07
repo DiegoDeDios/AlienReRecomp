@@ -246,8 +246,8 @@ as tested.
   rate is nudged to keep ~60 ms buffered; otherwise a timer paces at the PS1
   rate (59.82 Hz).
 * The emulated CPU runs at 300% by default (`--cpu-speed`), which keeps heavy
-  scenes at 60 fps. This is safe because the game scales its logic by the
-  number of vblanks elapsed since the previous frame.
+  scenes at 60 fps. The game scales its logic by the number of vblanks elapsed
+  since the previous frame, with an exception found so far in enemy leaps (below).
 * That setting is a floor: the budget adapts to the game
   (`src/runtime/native.c`). The frame routine ends by waiting for the next
   refresh (`0x80030E68`, wrapped), so the instructions between two of those
@@ -363,6 +363,15 @@ a job; like the overlay's combo, both stay masked from the game until released.
 Sections have their own coordinates and nothing found links them, so the map
 shows one section. The drawing is a Dear ImGui draw list in the toast's overlay
 pass (`launcher.cpp`), in window space, so widescreen does not affect it.
+
+### Enemy leaps (`src/runtime/native.c`)
+
+The game's timing mostly follows the frame step, but one part of a leap does
+not, and with the frame rate boost leaps came out several times as high and far
+(issue #17). A wrapper around the move routine (`0x80050730`), only
+when called by the leap update at a step of 1, takes two thirds of the leap's
+push back out of the velocity the routine stored; see `FINDINGS.md`. Steps of 2 or
+more and demos are left alone, so the original frame rates behave as they did.
 
 ### Infinite flashlight
 
