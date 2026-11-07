@@ -47,11 +47,13 @@ only fully visible in widescreen.*
   * [Steady 60 FPS](#steady-60-fps)
   * [Mouse and Keyboard](#mouse-and-keyboard)
   * [Responsive Controls](#responsive-controls)
+  * [Map](#map)
   * [Quick Save](#quick-save)
   * [Settings Without Leaving the Game](#settings-without-leaving-the-game)
   * [Sprint](#sprint)
   * [Enemy Damage Sliders](#enemy-damage-sliders)
   * [Infinite Flashlight](#infinite-flashlight)
+  * [HD Textures](#hd-textures)
   * [Smaller Changes](#smaller-changes)
 * [Controls](#controls)
 * [Planned Features](#planned-features)
@@ -92,17 +94,16 @@ If the game does not start, make sure your graphics drivers are up to date.
 
 Start the port, choose your disc image (`.cue`, one of its `.bin` tracks or
 the folder) and press **Start game**. The launcher checks that it is the USA
-release and shows the title art, read from your own disc. Settings and
-controls can be changed here or later in game, with the mouse, the keyboard
-or a controller.
+release. Settings and controls can be changed here or later in game, with the
+mouse, the keyboard or a controller.
 
 ![The launcher](docs/media/launcher.jpg)
 
 ### Widescreen and Wider Field of View
 
 * **Widescreen** at 16:9, 16:10, 21:9 or 32:9 widens the view in 3D instead
-  of stretching the picture. The HUD, menus, loading screens and movies keep
-  their original 4:3 shapes.
+  of stretching the picture. The HUD moves out to the screen edges, and it,
+  the menus, loading screens and movies keep their original 4:3 shapes.
 * **Field of view** slider: the game's own view is fairly narrow (53°
   across the screen at 4:3, 67° with 16:9 widescreen); widen it up to 100°.
   The first-person weapon keeps its original framing.
@@ -127,9 +128,10 @@ screen, are clipped properly. It can be switched off for the original look.
 ### Steady 60 FPS
 
 On the original hardware busy scenes drop to 20–30 fps. The port runs the
-game's code at three times the original CPU speed by default, which keeps
-60 fps; the game measures elapsed time itself, so it plays at the same speed
-as on the console. The game also capped itself at 20 fps while loading the
+game's code at three times the original CPU speed by default and gives it more
+when a busy scene needs it and your computer can afford it, which keeps 60 fps;
+the game measures elapsed time itself, so it plays at the same speed as on the
+console. The game also capped itself at 20 fps while loading the
 next part of a level (from the terminal or door that starts the load until
 you walk through); the port stays at 60.
 
@@ -166,6 +168,14 @@ The port reads the controls right when the game needs them:
 | Stick travel ignored | 38% | 10% |
 | Movement with the left stick half pushed | 18% | 45% |
 | Full-speed turn | 137°/s | 206°/s |
+
+### Map
+
+Press **M** (**Select + D-pad down** on a controller) for a map of the rooms you have visited in the current part of the level.
+
+| The game | The map at the same moment |
+| --- | --- |
+| ![Ripley in a corridor between two rooms](docs/media/map_game.jpg) | ![The two rooms visited so far as green outlines, with a white triangle on Ripley's position](docs/media/map.jpg) |
 
 ### Quick Save
 
@@ -231,12 +241,29 @@ and then has to recharge while switched off. With **Infinite flashlight**
 | --- | --- |
 | ![The original flashlight has run out](docs/media/flashlight_original.jpg) | ![The infinite flashlight is still on](docs/media/flashlight_infinite.jpg) |
 
+### HD Textures
+
+New high resolution artwork in place of the game's own, for now the title logo and
+the menu bands, which also reach the edges of a widescreen window. You can switch
+them off.
+
+| Original | HD textures |
+| --- | --- |
+| ![The title menu with the game's own logo and bands, which stop short of the window's edges](docs/media/menu_original.jpg) | ![The same frame with the HD logo and metal bands across the whole window](docs/media/menu_hd.jpg) |
+
 ### Smaller Changes
 
 * Memory card saves work (save, load, overwrite) and are kept as standard
   memory card images.
+* Ammo pickups give more, always on: shotgun shells 8 (originally 4), pulse
+  rifle clips 90 (60), grenade shells 9 (6), laser clips 80 (40), rocket shells
+  8 (4).
 * **Skip intro movies** starts straight at the title menu.
 * **Fast forward**: hold the backtick key.
+* Enemies leap the same height at 60 fps as at the original frame rate; the
+  extra frames used to send them much higher and further.
+* Flickering lights flash at most 3 times a second, for players sensitive to
+  flashing, and rotating lights turn at their 30 fps speed.
 * Invert Y is off by default (the original defaulted to on); the game's own
   option still changes it.
 * Screenshots with F12.
@@ -265,6 +292,7 @@ all changeable in **Controls**:
 | V / B (middle click) | L3 / R3 | centre view / quick turn |
 | ` (backtick) | | fast forward (added) |
 | F5 / F9 | | quick save / quick load (added) |
+| M | | map (added) |
 
 Fixed keys: F2 opens the settings overlay, F11 or Cmd+Ctrl+F toggles
 fullscreen (F11 only on Windows), F12 takes a screenshot (Shift+F12 dumps
@@ -281,14 +309,6 @@ the game's own pause menu stays closed.
 
 ## Planned Features
 
-* **High-resolution texture replacement.** The game's art can't simply be
-  swapped for bigger images: textures are small 4-bit tiles packed into
-  256×256 VRAM pages, each drawn with its own 16-colour palette (see
-  [Textures and images](docs/FINDINGS.md#textures-and-images)). The plan,
-  as in emulators such as DuckStation, is to dump every texture the game
-  draws to PNG (named by a hash of its pixels and palette), let them be
-  upscaled or repainted, and have the renderer draw the replacements.
-  Full-screen images (loading screens, title art) can be replaced whole.
 * **Linux: an AppImage or Flatpak** for desktop integration, and arm64
   packages (they build with `ARCH=arm64 tools/build_linux_docker.sh` but
   are not part of the release yet).
@@ -359,6 +379,16 @@ Yes: branches in progress are published as pre-releases, marked as such on the
 may have new problems, and their quick saves do not carry over to the final
 release.
 
+#### Is AI used in this project?
+
+AI is used in the development of this project, but no generative AI is or will
+be used for image and texture generation or upscaling. The 4K version of the logo
+was made by me on Inkscape, and texture packs are used with due credit to the
+original artists (see [Credits](#credits)).
+
+(yes, I know the app logo can fall in that category but I promise I'm working on a
+human-made one)
+
 #### Where do I report a bug?
 
 In the [issue tracker](https://github.com/DiegoDeDios/AlienReRecomp/issues).
@@ -416,6 +446,10 @@ game so far.
   by Rodrigo Copetti, for PlayStation hardware reference.
 * PGXP, originally by iCatButler for PCSX-R, for the idea behind precision
   geometry.
+* [Rusty Style Texture Pack 05](https://www.deviantart.com/llexandro/art/Rusty-Style-Texture-Pack-05-685785801)
+  by llexandro, the source of the HD menu bands and the launcher's background
+  (recoloured and relit).
+  The MIT License below does not cover this artwork.
 
 ## License
 

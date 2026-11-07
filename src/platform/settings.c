@@ -36,6 +36,7 @@ const ActionInfo g_actions[ACT_COUNT] = {
     [ACT_FAST_FORWARD] = {"fast_forward", "Fast forward", "", false},
     [ACT_QUICK_SAVE] = {"quick_save", "Quick save", "", false},
     [ACT_QUICK_LOAD] = {"quick_load", "Quick load", "", false},
+    [ACT_MAP] = {"map", "Map", "", false},
 };
 
 static const uint16_t g_act_button[ACT_COUNT] = {
@@ -81,6 +82,7 @@ void settings_default_bindings(Settings *s) {
         {ACT_FAST_FORWARD, SDL_SCANCODE_GRAVE, 0, -1},
         {ACT_QUICK_SAVE, SDL_SCANCODE_F5, 0, -1},
         {ACT_QUICK_LOAD, SDL_SCANCODE_F9, 0, -1},
+        {ACT_MAP, SDL_SCANCODE_M, 0, -1},
     };
     for (size_t i = 0; i < sizeof d / sizeof d[0]; i++) {
         s->key[d[i].a][0] = d[i].k0;
@@ -116,6 +118,7 @@ void settings_defaults(Settings *s) {
     s->aspect_w = 16, s->aspect_h = 9;
     s->internal_scale = 4;
     s->pgxp = true;
+    s->hd_textures = true;
     s->vsync = true;
     snprintf(s->gpu_driver, sizeof s->gpu_driver, "auto");
     s->smooth = true;
@@ -316,6 +319,7 @@ bool settings_load(Settings *s, const char *path) {
                     s->aspect_w = w, s->aspect_h = h;
             } else if (!strcmp(k, "internal_scale")) s->internal_scale = clampi(atoi(v), 1, 8);
             else if (!strcmp(k, "pgxp")) s->pgxp = parse_bool(v);
+            else if (!strcmp(k, "hd_textures")) s->hd_textures = parse_bool(v);
             else if (!strcmp(k, "vsync")) s->vsync = parse_bool(v);
             else if (!strcmp(k, "smooth")) s->smooth = parse_bool(v);
             else if (!strcmp(k, "fullscreen")) s->fullscreen = parse_bool(v);
@@ -386,10 +390,10 @@ bool settings_save(const Settings *s, const char *path) {
     else
         snprintf(fov, sizeof fov, "original");
     fprintf(f, "[video]\nwidescreen = %s\naspect = %d:%d\nfov = %s\ninternal_scale = %d\n"
-               "pgxp = %s\nvsync = %s\nsmooth = %s\nfullscreen = %s\nshow_fps = %s\n"
+               "pgxp = %s\nhd_textures = %s\nvsync = %s\nsmooth = %s\nfullscreen = %s\nshow_fps = %s\n"
                "gpu_driver = %s\n\n",
             tf[s->widescreen], s->aspect_w, s->aspect_h, fov, s->internal_scale,
-            tf[s->pgxp], tf[s->vsync], tf[s->smooth], tf[s->fullscreen], tf[s->show_fps],
+            tf[s->pgxp], tf[s->hd_textures], tf[s->vsync], tf[s->smooth], tf[s->fullscreen], tf[s->show_fps],
             s->gpu_driver);
     fprintf(f, "[gameplay]\nsprint = %s\nsprint_speed = %d\ninfinite_flashlight = %s\n"
                "quick_save = %s\ncpu_speed = %d\n\n",
@@ -472,6 +476,7 @@ void input_read(const Settings *s, SDL_Gamepad *pad, uint32_t mouse_buttons, Inp
     out->fast_forward = held[ACT_FAST_FORWARD] || pad_held(pad, s->pad[ACT_FAST_FORWARD]);
     out->quick_save = held[ACT_QUICK_SAVE] || pad_held(pad, s->pad[ACT_QUICK_SAVE]);
     out->quick_load = held[ACT_QUICK_LOAD] || pad_held(pad, s->pad[ACT_QUICK_LOAD]);
+    out->map = held[ACT_MAP] || pad_held(pad, s->pad[ACT_MAP]);
 
     static bool stick_sprint;
     if (!pad) {

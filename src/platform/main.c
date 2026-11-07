@@ -26,6 +26,7 @@
 #include "../runtime/psx.h"
 #include "../runtime/pgxp.h"
 #include "../runtime/savestate.h"
+#include "../hw/texrep.h"
 #include "../runtime/widescreen.h"
 #include "discinfo.h"
 #include "launcher.h"
@@ -51,7 +52,7 @@ static struct {
     int nstates;
     struct { long frame; uint32_t addr, value; int size; } pokes[32];
     int npokes;
-    struct { long frame; long len; uint16_t button; bool sprint; } presses[256];
+    struct { long frame; long len; uint16_t button; bool sprint, map; } presses[256];
     int npresses;
     struct { long frame; long len; int lx, ly, rx, ry; } sticks[64];
     int nsticks;
@@ -74,6 +75,7 @@ static struct {
     bool no_launcher;
     const char *launcher_shot, *launcher_page, *launcher_keys;
     const char *overlay_shot;
+    const char *textures;   /* texture pack folder, instead of the usual ones */
 } opt = {.max_frames = -1, .scale = 3.0f, .render_scale = 4, .smooth = true,
        .mouse_sens = 6.0f, .fuzz_from = -1, .aspect = 16.0f / 9.0f};
 
@@ -82,6 +84,7 @@ static bool g_gpu_ok;
 static SDL_AudioStream *g_audio;
 static SDL_Gamepad *g_pad;
 static uint64_t g_next_frame_ns;
+static uint64_t g_frame_end_ns; /* when the last frame was presented and paced */
 static bool g_vsync_paced;  /* display refresh ~= PS1 refresh: let vsync pace */
 static uint64_t g_frame_ns = (uint64_t)FRAME_NS; /* host time per emulated frame */
 static bool g_quit;
@@ -96,6 +99,7 @@ static Settings g_applied;  /* the settings currently in effect */
 #define OVERLAY_COMBO_FRAMES 20
 static OverlayInfo g_overlay_info;
 static bool g_overlay_want;    /* open it once this vblank's input is read */
+static bool g_map_open;
 static int g_combo_frames;
 static bool g_combo_latched;   /* Select+Start kept from the game until released */
 static bool g_input_hold;      /* after closing: buttons still held stay with the overlay */
@@ -231,13 +235,14 @@ static void write_shot(const char *path, bool vram) {
 /* ------------------------------------------------------------------ */
 /* input                                                               */
 
-static uint16_t scripted_buttons(bool *sprint) {
+static uint16_t scripted_buttons(bool *sprint, bool *map) {
     uint16_t b = 0;
     for (int i = 0; i < opt.npresses; i++)
         if (g_frame >= opt.presses[i].frame &&
             g_frame < opt.presses[i].frame + opt.presses[i].len) {
             b |= opt.presses[i].button;
             *sprint |= opt.presses[i].sprint;
+            *map |= opt.presses[i].map;
         }
     return b;
 }
@@ -286,9 +291,29 @@ static bool overlay_combo(void) {
     return g_combo_latched;
 }
 
+/* Select + D-pad down on the controller toggles the map: every standard button
+ * already has a job. As with the overlay's combo, each stays masked from the
+ * game until released. */
+static bool map_combo(bool *pressed) {
+    static bool latched;
+    if (!g_pad) {
+        latched = false;
+        return false;
+    }
+    int sel = g_cfg.pad[ACT_SELECT] >= 0 ? g_cfg.pad[ACT_SELECT] : SDL_GAMEPAD_BUTTON_BACK;
+    int down = g_cfg.pad[ACT_DPAD_DOWN] >= 0 ? g_cfg.pad[ACT_DPAD_DOWN] : SDL_GAMEPAD_BUTTON_DPAD_DOWN;
+    bool a = input_pad_held(g_pad, sel), b = input_pad_held(g_pad, down);
+    *pressed |= a && b;
+    if (a && b)
+        latched = true;
+    else if (!a && !b)
+        latched = false;
+    return latched;
+}
+
 static void poll_input(void) {
-    bool sprint = false;
-    uint16_t b = scripted_buttons(&sprint);
+    bool sprint = false, map = false;
+    uint16_t b = scripted_buttons(&sprint, &map);
     uint8_t lx = 0x80, ly = 0x80, rx = 0x80, ry = 0x80;
     float mdx = 0, mdy = 0;
     for (int i = 0; i < opt.nmice; i++)
@@ -332,6 +357,8 @@ static void poll_input(void) {
         input_read(&g_cfg, g_pad, g_mouse_captured ? g_mouse_buttons : 0, &in);
         if (overlay_combo())
             in.buttons &= (uint16_t)~(PAD_SELECT | PAD_START);
+        if (map_combo(&map))
+            in.buttons &= (uint16_t)~(PAD_SELECT | PAD_DOWN);
         if (g_input_hold) {
             /* the key or button that closed the overlay is still down */
             if (in.buttons)
@@ -353,6 +380,11 @@ static void poll_input(void) {
             quick_request(true);
         qs_held = in.quick_save;
         ql_held = in.quick_load;
+        static bool map_held;
+        map |= in.map;
+        if (map && !map_held)
+            g_map_open = !g_map_open;
+        map_held = map;
         if (g_mouse_captured && g_cfg.mouse_look)
             mdx += g_mouse_dx, mdy += g_mouse_dy;
         g_mouse_dx = g_mouse_dy = 0;
@@ -551,6 +583,10 @@ static void apply_live(void) {
         g_sprint_pct = c->sprint ? c->sprint_pct : 100;
         LOGI("overlay", "sprint speed %d%%", g_sprint_pct);
     }
+    if (c->hd_textures != a->hd_textures) {
+        g_texrep_on = c->hd_textures;
+        LOGI("overlay", "HD textures %s", c->hd_textures ? "on" : "off");
+    }
     if (c->infinite_flashlight != a->infinite_flashlight) {
         g_infinite_flashlight = c->infinite_flashlight;
         LOGI("overlay", "infinite flashlight %s", c->infinite_flashlight ? "on" : "off");
@@ -573,7 +609,7 @@ static void apply_live(void) {
         LOGI("overlay", "enemy damage: %s", buf);
     }
     if (c->cpu_pct != a->cpu_pct) {
-        g_cycle_scale = cycle_scale_for(c->cpu_pct);
+        cpu_budget_configure(cycle_scale_for(c->cpu_pct));
         LOGI("overlay", "emulated CPU speed %d%%", c->cpu_pct);
     }
     if (c->mouse_look != a->mouse_look || c->mouse_sens != a->mouse_sens) {
@@ -726,6 +762,38 @@ static void script_tick(void) {
 
 /* ------------------------------------------------------------------ */
 /* in-game overlay                                                     */
+
+/* a player's own pack, then the one that comes with the port: rules are tried in
+ * the order they were loaded */
+static void load_texture_packs(void) {
+    g_texrep_on = g_cfg.hd_textures;
+    if (!g_gpu_ok)
+        return;
+    if (opt.textures) {
+        render_load_texture_pack(opt.textures);
+        return;
+    }
+    char path[1100];
+    snprintf(path, sizeof path, "%s/textures", platform_data_dir());
+    render_load_texture_pack(path);
+    const char *base = SDL_GetBasePath();
+    if (base) {
+        snprintf(path, sizeof path, "%stextures", base);
+        render_load_texture_pack(path);
+    }
+}
+
+/* a quick save / load message and the map, over the game; the map closes
+ * when the player leaves play (pause menu, cutscene) */
+static void update_game_overlays(void) {
+    if (!g_gpu_ok)
+        return;
+    AutomapView view;
+    g_map_open = g_map_open && automap_view(&view);
+    if (g_map_open)
+        toast_prepare(g_win, render_gpu_device(), render_window_format());
+    render_set_overlay(toast_frame(g_map_open ? &view : NULL) ? toast_render : NULL);
+}
 
 /* Runs the overlay until the player resumes. The emulated machine is
  * paused meanwhile (this runs inside the vblank event), as is the audio;
@@ -956,9 +1024,10 @@ void platform_vblank(void) {
         run_overlay();
         poll_input();
     }
-    /* a quick save / load message over the game */
-    if (g_gpu_ok)
-        render_set_overlay(toast_frame() ? toast_render : NULL);
+    update_game_overlays();
+    uint64_t work_end = SDL_GetTicksNS();
+    if (g_frame_end_ns)
+        cpu_budget_host_time(work_end - g_frame_end_ns);
     render_present();
     audio_rate_control();
     /* pacing: a timer caps the frame rate (at the display refresh when it is
@@ -977,6 +1046,7 @@ void platform_vblank(void) {
     } else if (now - g_next_frame_ns > 100000000ull) {
         g_next_frame_ns = now; /* fell behind: resync */
     }
+    g_frame_end_ns = SDL_GetTicksNS();
 }
 
 static void vblank_event(int64_t now, int64_t late) {
@@ -1134,6 +1204,10 @@ static void parse_args(int argc, char **argv) {
             g_interp_only = true;
         } else if (!strcmp(a, "--no-pgxp")) {
             g_cfg.pgxp = false;
+        } else if (!strcmp(a, "--no-hd-textures")) {
+            g_cfg.hd_textures = false;
+        } else if (!strcmp(a, "--textures") && v) {
+            opt.textures = v, i++;
         } else if (!strcmp(a, "--no-infinite-flashlight")) {
             g_cfg.infinite_flashlight = false;
         } else if (!strcmp(a, "--fov") && v) {
@@ -1251,8 +1325,11 @@ static void parse_args(int argc, char **argv) {
             if (f && bn && opt.npresses < 256) {
                 opt.presses[opt.npresses].frame = atol(f);
                 opt.presses[opt.npresses].sprint = !strcmp(bn, "sprint");
+                opt.presses[opt.npresses].map = !strcmp(bn, "map");
                 opt.presses[opt.npresses].button =
-                    opt.presses[opt.npresses].sprint ? 0 : button_by_name(bn);
+                    opt.presses[opt.npresses].sprint || opt.presses[opt.npresses].map
+                        ? 0
+                        : button_by_name(bn);
                 opt.presses[opt.npresses].len = ln ? atol(ln) : 4;
                 opt.npresses++;
             }
@@ -1276,7 +1353,7 @@ static void apply_settings(const Settings *c) {
     g_sprint_pct = c->sprint ? c->sprint_pct : 100;
     g_infinite_flashlight = c->infinite_flashlight;
     g_fov_deg = c->fov;
-    g_cycle_scale = cycle_scale_for(c->cpu_pct);
+    cpu_budget_configure(cycle_scale_for(c->cpu_pct));
     g_enemy_damage_pct = c->enemy_damage_pct;
     memcpy(g_enemy_damage_group_pct, c->enemy_damage_group_pct, sizeof g_enemy_damage_group_pct);
     apply_camera(c);
@@ -1424,6 +1501,7 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
+    load_texture_packs();
     g_rgb = malloc(1024 * 512 * 3);
 
     static CPU cpu;

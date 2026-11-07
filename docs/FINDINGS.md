@@ -37,6 +37,26 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   * `DEMOn.DEM` — attract-mode input recordings.
   * `FRONTEND.CVB`, `UFATHER.CVD`.
 
+## Level collision (`MAP` chunk)
+
+A Quake-style BSP. In RAM the pointer is at `0x800A4758` and the offsets of the
+file's header are pointers. Header: `+0x10` planes, `+0x14`, `+0x18`, `+0x1C` the
+node arrays of three hulls (the first two hold the level's detail, the third has
+only a few nodes), `+0x20` rooms, `+0x32` u16 room count (31 at most on the disc).
+* Room, 40 bytes: `+0x0C`, `+0x10`, `+0x14` u16 first node of each hull, each
+  followed by a u16 node count; `+0x1C` six s16: box min x, y, z, max x, y, z.
+* Node, 8 bytes: u32 `type | value << 2`, s16 child if negative, s16 child if not
+  (`0x800269D8`). Type 0, 1, 2: x, y or z + value. Type 3: value indexes the
+  planes, 12 bytes `{s16 nx, ny, nz, pad; s32 d}` with 1.0 = 4096, as nx x + ny y
+  + nz z + d. Positions and values are 20.12, the box whole units.
+* Negative child = leaf: -2 solid, -1 open. Other values (-10 to -20 seen) are
+  mostly slivers about 1 unit wide along room seams, but some cover large areas;
+  meaning unknown.
+* `0x80035F58` finds the room holding a point; -1 from `0x80026B3C` means inside.
+* Sections have their own coordinates (nearly all start at 10, 10, 10). y grows
+  upwards. Facing: at yaw 2048 the player walks towards -z and strafes right
+  towards +x; turning right raises yaw, so the walking direction is (-sin, cos).
+
 ## Textures and images
 
 * **Level files** (`L??S??.WAD`): a 2 KiB header with the chunk count at
@@ -67,6 +87,10 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   height`, 8 bytes, then 15-bit pixels (512×240 and 384×240).
   `FEGRUK05/06.TIM` are standard 16-bit 256×256 TIMs placed at VRAM
   (768, 256).
+* **Title logo:** six 8-bit layers blended in the overlay slots at slot 2: dark
+  `AL` and `EN` (131×42, page (896, 256)), a bright layer (250×30) and three
+  `RESURRECTION` strips (255×24, page (768, 256)), with the palettes at y 505–510.
+  The title's 3D corridor is level 30, section 0.
 * The character files (`*.CVS`) hold no texture data; character skins are
   probably in each level's TXF (inferred, not yet checked with a character
   on screen).
@@ -198,6 +222,28 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   near-plane clipping: a corner behind the camera gets SZ = 0 and an SXY
   clamped to the edge of the GTE's range, so such a quad's screen
   coordinates, its subdivided midpoints and its NCLIP winding are garbage.
+* Dynamic lights: a linked list at `gp+116`, updated by `0x8001DB54`; `+0x10` owner
+  object, `+0x18` position, `+0x22` intensity, `+0x26` direction. The flashlight is
+  one, owned by the player (its slow pulse keeps its timing at any frame rate).
+  Lights on level objects are driven by `0x80080FE4(obj)`, mode `[[obj+124]+46]`,
+  jump table at `0x800A3B90`: 0 and 5 toggle intensity 128/64, 1 toggles 384/128,
+  2 to 4 fade on the frame step, 6 rotates a beam by 32 per call, 7 flashes (384 for
+  one call, otherwise a 1 in 4 chance per call, with `0x80080F34` playing a sound),
+  8 stays on. Modes 0, 1, 5, 6 and 7 ignore the frame step. Measured on mode 7 over
+  10 s: 49 flashes of 2 vblanks at 30 fps, 103 of 1 vblank at 60 fps.
+* Enemy leaps (`0x80069724`, for each object in the leap): y grows upwards.
+  Gravity takes 2457 per vblank from the y velocity (`obj+0x48`, velocity is
+  `+0x44` to `+0x4C`), and a target of position + velocity × step goes to the move
+  routine `0x80050730`. That adds the push (`+0x50` to `+0x58`, set by `0x800505DC`,
+  faded by 0.9 per vblank in the object loop at `0x8003BE34`) × step to the target
+  and stores the movement ÷ step as the velocity, so the push is added to the
+  velocity once per call, not per vblank. For one leap of an alien (type 21) in the
+  first attract demo's scene, height and distance by frame step: step 3: 41, 0;
+  step 2: 68, 0; step 1: 98, 257. Two more leaps at step 1 reached 385 high and
+  1417 far, against 64 and 416 at the original speed. A model of those steps reproduces the logged moves exactly. Keeping a
+  third of the push at a step of 1 gives 68 high on all three leaps measured, and
+  landings within a few vblanks of a step of 2. A scripted alien path (obj 38 of
+  that scene) did not change with the step.
 * Frame step: the per-frame routine at `0x8001FBE0` reads `VSync(-1)`,
   computes vblanks elapsed since the previous frame, clamps it to 1..8 and
   stores it at `gp+0x4130` for the game logic (`gp+0x4134` holds the last
@@ -225,6 +271,14 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   holds through all of it.
 * At original CPU speed the attract demo's combat scenes run at 20–30 fps;
   at 300% they hold 60 fps.
+* Frame budget: the frame routine waits for the next refresh in `0x80030E68`
+  (counter at `gp+368`, called at `0x8001FC64`), so a frame's work is the
+  instructions between two such calls. Measured at the 300% budget of 903k per
+  refresh: 353k facing a wall, and 566k with the pulse rifle firing there; firing
+  adds about 200k (`0x80024710`, `0x8002530C`, `0x80050D68`, `0x800645BC`). A
+  reading of 1.6M beside an alien in level 8 section 5 is not normal play: the
+  test teleported the player to a point the BSP reports as solid, which keeps the
+  collision chain (`0x80026264` to `0x800269D8`) busy.
 * libetc `VSync` wait helper: `0x80082C4C` in `ALIEN.BIN` (vblank counter at
   `0x8009D240`), `0x800163D4` in `SLUS_006.33` (counter at `0x8001F6C8`);
   timeout after `n << 15` loop iterations.
@@ -333,10 +387,23 @@ game data look like `0x000A63FC` rather than `0x800A63FC`.
   76 and 77: 1200); the HUD shows amounts with a maximum as a percentage.
   The same table area holds gameplay constants, e.g. `+0xCC` flashlight
   capacity (1200), `+0xD0..+0xE0` flashlight flicker parameters.
+* Pickups: touching one calls `0x80052D8C`, which reads the item code from the
+  object (`+0x142`); a weapon already owned counts as its ammo (code + 8).
+  `0x800524F0(c)` then adds the amount at `0x800A7A44 + (c + 22) × 4` unless the
+  count is negative (infinite). Level setup (`0x8005281C`, `0x80052698`) reads
+  the same table for starting ammo.
 * HUD (`0x80034BA4` per frame): `0x80052AEC` rebuilds two lists from the
   inventory, weapons at `0x8010C430` and items at `0x8010C588` (`int
   selected; int count; 8-byte slots {u16 code; …; s16 amount}`), and
-  `0x80033AA4` draws them; the motion tracker is `0x800343FC`.
+  `0x80033A9C` draws them; the motion tracker is `0x800343FC` and the crosshair
+  `0x80034A50`, which projects the aim point at player `+232` with `RTPS` and
+  averages it with the last position (`gp+16856`, `gp+16858`). Panels are
+  `POLY_FT4` from `0x80033628` and `0x8003373C` (the second clips x at 0 without
+  masking, so a negative x spills sign bits into y); the crosshair is 8 `LINE_F2`.
+  Layout in the 384-wide buffer, of which the display mode shows 368 columns:
+  health x 13–104, y 15; tracker x 13–75, y 169; weapon panel x 290–367, y 204;
+  item panel x 307–370, y 15. Panels slide in with `0x800363EC` (`0x8010C572` is
+  the slide, 0 = in place, and `0x8010C575` an extra x offset for the tracker).
 * Use item (`0x80052FA0`, from the player update when the gameplay command
   bit `0x0004` — Circle — is pressed): jump table at `0x800A2F34` indexed
   by `code − 64`. The flashlight case (`0x800530B4`) switches the light off

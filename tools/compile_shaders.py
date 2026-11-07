@@ -19,7 +19,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'src', 'render', 'shaders')
 OUT = os.path.join(ROOT, 'src', 'render', 'shaders_gen.h')
-SHADERS = ['draw.vert', 'draw.frag', 'blit.vert', 'blit.frag', 'disp.vert', 'disp.frag']
+SHADERS = ['draw.vert', 'draw.frag', 'blit.vert', 'blit.frag', 'disp.vert', 'disp.frag', 'hd.frag']
 
 
 def run(*cmd):

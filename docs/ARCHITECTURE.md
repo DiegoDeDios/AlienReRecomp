@@ -123,8 +123,8 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   the game window before the emulated machine starts; it creates its own
   GPU device and releases the window to the game renderer when the player
   presses Start. It validates the chosen disc image (`discinfo.c`: cue sheet
-  resolution, `SYSTEM.CNF` must boot `SLUS_006.33`) and uses a loading
-  screen from the player's `PACK.BIN` as background art. Navigation is
+  resolution, `SYSTEM.CNF` must boot `SLUS_006.33`). Its background art is
+  `launcher_art.png` from the port's `textures` folder. Navigation is
   handled by the pages themselves (rows, columns in the bindings table) so
   keyboard and controller behave the same; mouse hover and clicks work too.
   Fonts come from the system (macOS: DIN, Helvetica; Windows: Bahnschrift,
@@ -200,6 +200,17 @@ texels blend. CPU→VRAM uploads, VRAM copies and fills are GPU operations; VRAM
   width (fades, cutscene letterbox bars) and rectangles copying the displayed
   frame back to the same position (the explosion darkening), since that
   frame is already wide.
+* **HUD at the edges** (`src/runtime/native.c`): the squash alone leaves the HUD
+  in the 4:3 box. Wrappers around the panel and tracker routines (`0x80033A9C`,
+  `0x800343FC`) shift the x of the packets each one just built (the packet
+  pointer is at `0x1F800044`), left of the middle towards the left edge and the
+  rest towards the right, so the squash puts them at the same margins as at
+  4:3. The tracker also moves down 4 lines, level with the ammo panel. The
+  display shows 368 columns of the 384-wide buffer, so raw x 384 maps to the
+  right edge. Menus and text never pass through these routines.
+* **Crosshair**: `0x80034A50` places it with `RTPS`, so its position is already
+  wide. A wrapper shifts its lines to cancel the squash on the position, and
+  only its shape is squashed.
 * **Display aspect per frame**: the window is only shown wide while 3D is
   being drawn; pure 2D screens (loading screens, bitmaps) and FMV stay 4:3,
   pillarboxed.
@@ -235,8 +246,21 @@ as tested.
   rate is nudged to keep ~60 ms buffered; otherwise a timer paces at the PS1
   rate (59.82 Hz).
 * The emulated CPU runs at 300% by default (`--cpu-speed`), which keeps heavy
-  scenes at 60 fps. This is safe because the game scales its logic by the
-  number of vblanks elapsed since the previous frame.
+  scenes at 60 fps. The game scales its logic by the number of vblanks elapsed
+  since the previous frame, with the exceptions found so far in enemy leaps and flickering lights (below).
+* That setting is a floor: the budget adapts to the game
+  (`src/runtime/native.c`). The frame routine ends by waiting for the next
+  refresh (`0x80030E68`, wrapped), so the instructions between two of those
+  calls are the frame's real work. The budget follows the recent peak plus 25%,
+  rising at once and falling one step per second, up to 800%. At 100% it stays
+  off, for the original behaviour. A frame over budget misses the refresh and
+  halves the frame rate; a higher budget costs host time.
+* A host too slow for the boost would run the game in slow motion, so the frame
+  loop reports the time each frame took before presenting. After 30 frames in a
+  row over 14 ms while boosted, the budget drops a step and that becomes the
+  ceiling; the ceiling rises one step after 30 s without trouble. The budget
+  never drops below the setting, so a slow host behaves as it did with a fixed
+  budget.
 * libetc's `VSync` wait helper is replaced natively (`src/runtime/native.c`,
   listed in `tools/overrides_*.txt`): it fast-forwards emulated time to the
   next event instead of spinning, so its iteration-count timeout cannot fire
@@ -307,6 +331,108 @@ that helper scales the target speed and the acceleration for the player
 object while it is standing (not crouched) and no attract demo is playing,
 so walls, slopes and doors behave as usual and the speed ramps up and down
 smoothly.
+
+### Ammo pickups (`src/runtime/native.c`)
+
+Shotgun shells, pulse rifle clips, grenade shells, laser clips and rocket shells
+give more than in the original, with no setting. The game's amount table also
+sets starting ammo, so a wrapper around the function that counts a pickup
+(`0x800524F0`) adds the difference instead of changing the table. Attract-mode
+demos keep the original amounts.
+
+### Map (`src/runtime/automap.c`)
+
+The walls come from the collision BSP of the current section, which the game
+keeps in RAM (format in `FINDINGS.md`). Slicing it at one height clips the
+room's box against each node down to the leaves, leaving 2D regions open at
+that height; an edge of one with solid behind it is a wall. The slice is taken
+30 units below the player's origin and redone when the rooms seen change or the
+player has climbed or dropped 48 units, so it stays put on stairs and shows one
+floor. It uses the first hull, and only leaf -2 counts as solid: the other values
+along room seams would otherwise draw as walls.
+
+The HUD routine's wrapper marks the room the player is in as seen, in one mask
+per section told apart by a hash of the map header. That also tells the map the
+player is in play, so it closes during the pause menu, cutscenes and demos. The
+masks live in the host only, not in save states or memory cards: they last until
+the program exits and a quick load does not take rooms back.
+
+On a controller Select + D-pad down toggles it, since every standard button has
+a job; like the overlay's combo, both stay masked from the game until released.
+
+Sections have their own coordinates and nothing found links them, so the map
+shows one section. The drawing is a Dear ImGui draw list in the toast's overlay
+pass (`launcher.cpp`), in window space, so widescreen does not affect it.
+
+### Enemy leaps (`src/runtime/native.c`)
+
+The game's timing mostly follows the frame step, but one part of a leap does
+not, and with the frame rate boost leaps came out several times as high and far
+(issue #17). A wrapper around the move routine (`0x80050730`), only
+when called by the leap update at a step of 1, takes two thirds of the leap's
+push back out of the velocity the routine stored; see `FINDINGS.md`. Steps of 2 or
+more and demos are left alone, so the original frame rates behave as they did.
+
+### Flickering lights (`src/runtime/native.c`)
+
+Lights attached to level objects are updated by `0x80080FE4`, and some of its
+modes act once per call, so at 60 fps random flashes came twice as often and half
+as long. A wrapper runs those modes (0, 1, 5, 6, 7) every other vblank at a step
+of 1, with the step set to 2 for the call so the animation clock in the same
+routine keeps its speed. Modes 0, 1, 5 and 7 may also brighten at most once per 20
+vblanks, 3 times a second, shared across these lights: a later rise is undone. This
+covers these lights only, not muzzle flashes, explosions or other effects. Demos are
+left alone, because a flash held back changes the use of random numbers.
+
+### Texture replacement
+
+2D sprites can be drawn from high resolution images. A pack is a folder with a
+`replacements.ini` and PNGs (`src/render/texpack.c`):
+
+```ini
+[main menu logo]
+image = main_menu_logo.png
+screen = 44 6 295 65
+source = 896 256 8 768 510 0 0 131 42
+```
+
+A `source` is one texture of the game: page position in VRAM, bits per texel,
+palette position in VRAM and rectangle in the page. Without `screen`, each source
+is a sprite whose image is drawn where the game draws it, tinted by its vertex
+colour. With `screen` (x, y, w, h in the 384×240 buffer) the sources are layers of
+one picture: the first drawn in a frame draws the image at that spot and the rest
+are skipped; the image's opacity follows the brightest layer of the last frame,
+which is how the game fades them. Rules are tried in load order, so a player's
+`<data folder>/textures` goes before the port's `textures` next to the program,
+which comes from `assets/textures` (`--textures DIR` uses only that folder).
+
+`fill = y h` is for a band across the window at those rows, such as the menus' top
+and bottom bands, which the game draws from the same two textures with the bottom
+one upside down (rows 177 to 239):
+
+```ini
+[menu band, bottom]
+image = menu_band.png
+fill = 177 63
+source = 768 256 8 768 503 0 0 192 64
+source = 768 256 8 768 511 0 64 192 64
+```
+
+Only sources drawn in those rows match, so one image can serve two sections, and it
+is flipped when the game flips the sources. The image keeps its proportions, with
+its middle on the game's 2D art, buffer column 192 (the display shows 368 columns,
+so that is right of the window's middle). A narrower window crops its sides;
+in a wider one its edge columns carry on, and so does the left edge by about 2% at
+the aspect the image was made for. It takes the sources' colour as a tint, and its
+own alpha, rather than fading out like a `screen` picture.
+
+The match (`src/hw/texrep.c`) runs on quads in the overlay slots, in the GPU's
+decode order, so an image lands in the same place in the draw order as what it
+replaces and is squashed for widescreen like any overlay. The hardware renderer
+draws it with its own pipeline (`hd.frag`) over the VRAM target, with mipmaps,
+premultiplied alpha and the target's alpha (the mask bit) left alone. It renders at
+the internal resolution, so a sharp logo needs a high **Internal resolution**. The
+software renderer has no such path and keeps the original textures.
 
 ### Infinite flashlight
 

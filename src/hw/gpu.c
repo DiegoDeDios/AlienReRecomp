@@ -9,6 +9,7 @@
 #include "pgxp.h"
 #include "psx.h"
 #include "savestate.h"
+#include "texrep.h"
 #include "widescreen.h"
 
 uint16_t g_vram[VRAM_W * VRAM_H];
@@ -286,6 +287,8 @@ static void draw_polygon(const uint32_t *w) {
             flags |= ws_classify(xs, ys, nv, !tex);
         }
     }
+    if (tex && quad && g_ot_slot < WS_OVERLAY_SLOTS && texrep_quad(&S, v, tpage, clut, flags))
+        return;
     g_gpu_backend->triangle(&S, v, flags, clut, tpage);
     if (quad) {
         GVtx t[3] = {v[1], v[2], v[3]};
@@ -300,6 +303,14 @@ static int rect_words(uint32_t cmd) {
     if (((cmd >> 3) & 3) == 0)
         n++;
     return n;
+}
+
+static bool replaced_rect(const GVtx *v, int w, int h, uint16_t clut, uint32_t flags) {
+    GVtx q[4] = {*v, *v, *v, *v};
+    q[1].x += w, q[1].u += w;
+    q[2].y += h, q[2].v += h;
+    q[3].x += w, q[3].u += w, q[3].y += h, q[3].v += h;
+    return texrep_quad(&S, q, S.tpage, clut, flags);
 }
 
 static void draw_rect(const uint32_t *w) {
@@ -342,6 +353,8 @@ static void draw_rect(const uint32_t *w) {
         else
             flags |= ws_classify(xs, ys, 4, !tex);
     }
+    if (tex && g_ot_slot < WS_OVERLAY_SLOTS && wd && ht && replaced_rect(&v, wd, ht, clut, flags))
+        return;
     if (wd && ht)
         g_gpu_backend->rect(&S, &v, wd, ht, flags, clut);
 }
@@ -754,6 +767,7 @@ void gpu_state(StateIO *s) {
 
 void gpu_vblank(void) {
     ws_new_frame();
+    texrep_new_frame();
     if ((D.mode >> 5) & 1)
         D.field = !D.field;
     else

@@ -7,6 +7,7 @@
 #include <SDL3/SDL.h>
 #include <stdbool.h>
 
+#include "../runtime/automap.h"
 #include "settings.h"
 
 #ifdef __cplusplus
@@ -57,12 +58,14 @@ int overlay_update(void);
 void overlay_render(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *target, int w, int h);
 void overlay_close(void);
 
-/* A short message over the running game (quick save / load), shown for a
- * couple of seconds. Each frame, toast_frame builds it and returns true
- * while it is visible; toast_render then draws it like overlay_render. */
+/* Over the running game: a short message (quick save / load), shown for a
+ * couple of seconds, and the map (NULL = closed; call toast_prepare first).
+ * Each frame, toast_frame builds them and returns true if there is anything
+ * to show; toast_render then draws it like overlay_render. */
+void toast_prepare(SDL_Window *win, SDL_GPUDevice *dev, SDL_GPUTextureFormat fmt);
 void toast_show(SDL_Window *win, SDL_GPUDevice *dev, SDL_GPUTextureFormat fmt, const char *text,
                 bool error);
-bool toast_frame(void);
+bool toast_frame(const AutomapView *map);
 void toast_render(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *target, int w, int h);
 
 #ifdef __cplusplus

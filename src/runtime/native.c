@@ -10,6 +10,7 @@
 #include "pgxp.h"
 #include "psx.h"
 #include "savestate.h"
+#include "automap.h"
 #include "widescreen.h"
 
 /* libetc VSync's wait helper: v_wait(target, n) spins until the vblank
@@ -36,6 +37,93 @@ static void vsync_wait(CPU *c, uint32_t vcount_addr) {
 
 void ALIEN_80082C4C(CPU *c) { vsync_wait(c, 0x8009D240u); }
 void SLUS_800163D4(CPU *c) { vsync_wait(c, 0x8001F6C8u); }
+
+/* Adaptive CPU budget. The emulated CPU gets a fixed number of instructions per
+ * refresh (g_cycle_scale, the Frame rate boost setting), and a frame that uses
+ * more misses the refresh and halves the frame rate. The frame routine ends by
+ * waiting for the next refresh (0x80030E68, called at 0x8001FC64), so each frame's
+ * work is known there: the budget follows its recent peak with some margin,
+ * rising at once and falling slowly, never below the player's setting. A host
+ * too slow for a boosted frame caps the boost, or it would run in slow motion.
+ * Attract demos do not make this call and keep the setting. */
+#define FRAME_WAIT_RA      0x0001FC6Cu
+#define MIN_CYCLE_SCALE    4           /* 800%, the highest setting */
+#define NO_BOOST_SCALE     32          /* 100%, the original hardware */
+#define STEP_DOWN_FRAMES   60
+#define HOST_LIMIT_NS      14000000ull /* of the 16.7 ms frame; the rest presents */
+#define HOST_OVER_FRAMES   30          /* in a row, so a background hiccup does not count */
+#define HOST_RETRY_FRAMES  1800
+
+static uint32_t g_base_scale = 32 * 100 / 300;
+static uint32_t g_fastest_scale = MIN_CYCLE_SCALE;
+static int64_t g_frame_work_start = -1;
+static uint32_t g_peak_work;
+static int g_calm_frames, g_host_over, g_host_calm;
+
+void cpu_budget_configure(uint32_t scale) {
+    g_base_scale = g_cycle_scale = scale;
+    g_fastest_scale = MIN_CYCLE_SCALE;
+    g_peak_work = 0;
+    g_calm_frames = g_host_over = g_host_calm = 0;
+}
+
+static void cpu_budget_set(uint32_t scale) {
+    if (scale != g_cycle_scale)
+        LOGD("cpu", "budget: %u instructions per refresh",
+             (uint32_t)(PSX_NTSC_FRAME_CYCLES * 16 / scale));
+    g_cycle_scale = scale;
+}
+
+static void cpu_budget_frame_done(int64_t cycles) {
+    if (cycles < 0 || cycles > 8 * PSX_NTSC_FRAME_CYCLES) /* a save state was loaded */
+        return;
+    uint32_t work = (uint32_t)(cycles * 16 / g_cycle_scale);
+    g_peak_work -= g_peak_work / 64;
+    if (work > g_peak_work)
+        g_peak_work = work;
+    uint32_t wanted = g_base_scale;
+    uint32_t needed = g_peak_work + g_peak_work / 4;
+    if (needed > PSX_NTSC_FRAME_CYCLES * 16 / g_base_scale)
+        wanted = PSX_NTSC_FRAME_CYCLES * 16 / needed;
+    if (wanted < g_fastest_scale)
+        wanted = g_fastest_scale;
+    if (wanted < g_cycle_scale) {
+        cpu_budget_set(wanted);
+        g_calm_frames = 0;
+    } else if (wanted > g_cycle_scale && ++g_calm_frames >= STEP_DOWN_FRAMES) {
+        cpu_budget_set(g_cycle_scale + 1);
+        g_calm_frames = 0;
+    }
+}
+
+/* host time this frame took, without presenting it */
+void cpu_budget_host_time(uint64_t ns) {
+    if (ns > HOST_LIMIT_NS && g_cycle_scale < g_base_scale) {
+        g_host_calm = 0;
+        if (++g_host_over >= HOST_OVER_FRAMES) {
+            g_host_over = 0;
+            g_fastest_scale = g_cycle_scale + 1;
+            cpu_budget_set(g_fastest_scale);
+            LOGI("cpu", "host too slow for more budget: %u instructions per refresh at most",
+                 (uint32_t)(PSX_NTSC_FRAME_CYCLES * 16 / g_fastest_scale));
+        }
+    } else {
+        g_host_over = 0;
+        if (g_fastest_scale > MIN_CYCLE_SCALE && ++g_host_calm >= HOST_RETRY_FRAMES) {
+            g_host_calm = 0;
+            g_fastest_scale--;
+        }
+    }
+}
+
+void ALIEN_80030E68__orig(CPU *c);
+void ALIEN_80030E68(CPU *c) {
+    bool frame = (c->r[31] & 0x1FFFFFFFu) == FRAME_WAIT_RA && g_base_scale < NO_BOOST_SCALE;
+    if (frame && g_frame_work_start >= 0)
+        cpu_budget_frame_done(c->cycles - g_frame_work_start);
+    ALIEN_80030E68__orig(c);
+    g_frame_work_start = frame ? c->cycles : -1;
+}
 
 /* return address (physical: the interpreter runs the game from KUSEG) of
  * the frame routine's VSync(3), its 20 fps cap while a level section loads
@@ -123,6 +211,36 @@ static void flashlight_fill(void) {
     uint32_t inv = mem_r32(INVENTORY_PTR);
     if (inv)
         mem_w16(inv + 0x44, (uint16_t)mem_r32(FLASHLIGHT_CAPACITY));
+}
+
+/* Ammo pickups, rebalanced (0x800524F0, the one place pickups are counted). The
+ * game's amount table at 0x800A7A44 also sets starting ammo at level start, so
+ * it stays as it is and the difference is added here. Item codes as in
+ * FINDINGS.md; a negative count means infinite. */
+#define PICKUP_AMOUNTS 0x800A7A44u
+
+static int ammo_pickup_amount(uint32_t code) {
+    switch (code) {
+    case 57: return 8;  /* shotgun shells */
+    case 58: return 90; /* pulse rifle clip */
+    case 61: return 9;  /* grenade shells */
+    case 62: return 80; /* laser energy clip */
+    case 63: return 8;  /* rocket shells */
+    default: return 0;
+    }
+}
+
+void ALIEN_800524F0__orig(CPU *c);
+void ALIEN_800524F0(CPU *c) {
+    uint32_t code = c->r[4];
+    ALIEN_800524F0__orig(c);
+    int amount = ammo_pickup_amount(code);
+    int32_t count = (int16_t)c->r[2];
+    if (!amount || count < 0 || mem_r32(DEMO_PLAYBACK))
+        return;
+    count += amount - (int32_t)mem_r32(PICKUP_AMOUNTS + (code + 22) * 4);
+    mem_w16(mem_r32(INVENTORY_PTR) + 12 + (code - 48) * 2, (uint16_t)count);
+    c->r[2] = (uint32_t)count;
 }
 
 void ALIEN_800625CC__orig(CPU *c);
@@ -443,4 +561,162 @@ void ALIEN_80020848(CPU *c) {
     ALIEN_80020848__orig(c);
     if (off)
         gte_write_ctrl(c, 26, h);
+}
+
+/* Widescreen HUD. The renderer squashes overlays around the middle of the
+ * 384-wide buffer, which leaves the HUD in the old 4:3 box. Moving its packets
+ * right after they are built puts it at the screen edges. The game shows 368
+ * columns of that buffer, so raw x 384 is mapped to the right edge and 0 to the
+ * left one. Menus and text do not come through here and stay centred. */
+#define PACKET_PTR     0x1F800044u /* next free byte of the packet buffer */
+#define DISPLAY_W      368.0f
+#define HUD_MIDDLE     192
+#define POLY_FT4       0x2Cu       /* xy words 2, 4, 6, 8 */
+#define LINE_F2        0x40u       /* xy words 2, 3 */
+#define CROSSHAIR_X_GP 16856       /* smoothed x of the projected aim point */
+#define TRACKER_DOWN   4           /* bottom level with the ammo panel's, y 224 */
+
+static void shift_packets(uint32_t from, uint32_t to, int left_dx, int right_dx, int dy) {
+    for (uint32_t p = from; p < to; p += ((mem_r32(p) >> 24) + 1) * 4) {
+        uint32_t cmd = (mem_r32(p + 4) >> 24) & 0xFC;
+        if (cmd != POLY_FT4 && cmd != LINE_F2)
+            continue;
+        bool quad = cmd == POLY_FT4;
+        int dx = (int16_t)mem_r32(p + 8) < HUD_MIDDLE ? left_dx : right_dx;
+        for (int i = 0; i < (quad ? 4 : 2); i++) {
+            uint32_t a = p + 8 + (uint32_t)i * (quad ? 8 : 4), xy = mem_r32(a);
+            mem_w32(a, ((xy + ((uint32_t)dy << 16)) & 0xFFFF0000u) |
+                           ((xy + (uint32_t)dx) & 0xFFFFu));
+        }
+    }
+}
+
+/* run a HUD routine and send what it drew to the nearest screen edge */
+static void draw_at_edges(CPU *c, void (*draw)(CPU *), int dy) {
+    uint32_t from = mem_r32(PACKET_PTR);
+    draw(c);
+    if (!g_ws_wide_display)
+        return;
+    float k = g_ws_k;
+    int left = (int)lroundf(-HUD_MIDDLE * (1.0f - k) / k);
+    int right = (int)lroundf((DISPLAY_W - HUD_MIDDLE) / k - HUD_MIDDLE);
+    shift_packets(from, mem_r32(PACKET_PTR), left, right, dy);
+}
+
+void ALIEN_80033A9C__orig(CPU *c);
+void ALIEN_80033A9C(CPU *c) {
+    automap_game_frame();
+    draw_at_edges(c, ALIEN_80033A9C__orig, 0);
+}
+
+void ALIEN_800343FC__orig(CPU *c);
+void ALIEN_800343FC(CPU *c) { draw_at_edges(c, ALIEN_800343FC__orig, TRACKER_DOWN); }
+
+/* The crosshair is at a GTE projection, already wide, so only its shape may be
+ * squashed: the shift cancels what the squash does to its position. */
+void ALIEN_80034A50__orig(CPU *c);
+void ALIEN_80034A50(CPU *c) {
+    uint32_t from = mem_r32(PACKET_PTR);
+    ALIEN_80034A50__orig(c);
+    if (!g_ws_wide_display)
+        return;
+    int x = (int16_t)mem_r16(c->r[28] + CROSSHAIR_X_GP);
+    int dx = (int)lroundf((float)(x - HUD_MIDDLE) * (1.0f - g_ws_k) / g_ws_k);
+    shift_packets(from, mem_r32(PACKET_PTR), dx, dx, 0);
+}
+
+/* Enemy leaps. A leap starts with a push (obj+0x50, fading by 0.9 per vblank) on
+ * top of the velocity (obj+0x44). The move routine adds both to the position,
+ * which is right, but then stores the whole movement as the velocity, so each
+ * call also adds the push to it. More calls add more, and sooner, so at 60 fps
+ * enemies leap far higher and further than at the 20-30 fps the game was made
+ * for. At a step of 1 only a third of it counts, which gives the height of a step
+ * of 2 (worked out from the arc: 33 units for the leaps measured, see FINDINGS.md).
+ * Demos replay recorded steps and stay as they are. */
+#define LEAP_MOVE_RA 0x000698A8u
+#define OBJ_VELOCITY 0x44
+#define OBJ_PUSH     0x50
+
+static int32_t less_push(int32_t velocity, int32_t push) {
+    int32_t v = velocity - (int32_t)((int64_t)push * 2 / 3);
+    return (v < 0) == (velocity < 0) ? v : 0; /* a blocked move stays blocked */
+}
+
+void ALIEN_80050730__orig(CPU *c);
+void ALIEN_80050730(CPU *c) {
+    bool leap = (c->r[31] & 0x1FFFFFFFu) == LEAP_MOVE_RA && mem_r32(FRAME_STEP) == 1 &&
+                mem_r32(DEMO_PLAYBACK) == 0;
+    if (!leap) {
+        ALIEN_80050730__orig(c);
+        return;
+    }
+    uint32_t obj = c->r[4];
+    int32_t push[3];
+    for (int i = 0; i < 3; i++)
+        push[i] = (int32_t)mem_r32(obj + OBJ_PUSH + (uint32_t)i * 4);
+    ALIEN_80050730__orig(c);
+    for (int i = 0; i < 3; i++) {
+        uint32_t a = obj + OBJ_VELOCITY + (uint32_t)i * 4;
+        mem_w32(a, (uint32_t)less_push((int32_t)mem_r32(a), push[i]));
+    }
+}
+
+/* Flickering lights. The routine for lights attached to level objects (0x80080FE4)
+ * has modes that act once per call: random flashes (7), strobes (0, 1, 5) and
+ * rotating beacons (6). At 60 fps they ran twice as often as at 30 and a flash
+ * lasted half as long. At a step of 1 they run every other vblank with a step of 2,
+ * as at 30 fps. Other modes use the step already.
+ * For photosensitive players, flashes and strobes also brighten at most once per
+ * 20 vblanks, 3 times a second, across all these lights at any frame rate.
+ * Demos are left alone: a held-back flash changes the use of random numbers. */
+#define LIGHT_MODES_PER_CALL 0xE3u /* bits 0, 1, 5, 6, 7 */
+#define LIGHT_MODES_FLASHING 0xA3u /* bits 0, 1, 5, 7 */
+#define VBLANK_COUNT         0x800A86A8u /* gp+0x4134: counter at this frame */
+#define FLASH_MIN_GAP        20
+#define LIGHT_INTENSITY      34
+#define LIGHT_LAST_INTENSITY 36
+
+static uint32_t g_last_flash;
+
+static bool light_mode_in(uint32_t obj, uint32_t modes) {
+    uint32_t mode = mem_r16(mem_r32(obj + 124) + 46);
+    return mode < 8 && ((modes >> mode) & 1);
+}
+
+void ALIEN_80080FE4__orig(CPU *c);
+
+static void light_update_limited(CPU *c) {
+    uint32_t obj = c->r[4];
+    if (!light_mode_in(obj, LIGHT_MODES_FLASHING)) {
+        ALIEN_80080FE4__orig(c);
+        return;
+    }
+    uint32_t light = mem_r32(mem_r32(obj + 100) + 20);
+    uint16_t intensity = mem_r16(light + LIGHT_INTENSITY);
+    uint16_t last = mem_r16(light + LIGHT_LAST_INTENSITY);
+    ALIEN_80080FE4__orig(c);
+    if ((int16_t)mem_r16(light + LIGHT_INTENSITY) <= (int16_t)intensity)
+        return;
+    uint32_t now = mem_r32(VBLANK_COUNT);
+    if (now - g_last_flash >= FLASH_MIN_GAP) {
+        g_last_flash = now;
+        return;
+    }
+    mem_w16(light + LIGHT_INTENSITY, intensity);
+    mem_w16(light + LIGHT_LAST_INTENSITY, last);
+}
+
+void ALIEN_80080FE4(CPU *c) {
+    if (mem_r32(DEMO_PLAYBACK)) {
+        ALIEN_80080FE4__orig(c);
+        return;
+    }
+    bool every_other = mem_r32(FRAME_STEP) == 1 && light_mode_in(c->r[4], LIGHT_MODES_PER_CALL);
+    if (every_other && (mem_r32(VBLANK_COUNT) & 1))
+        return;
+    if (every_other)
+        mem_w32(FRAME_STEP, 2);
+    light_update_limited(c);
+    if (every_other)
+        mem_w32(FRAME_STEP, 1);
 }

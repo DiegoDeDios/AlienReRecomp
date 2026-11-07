@@ -17,7 +17,10 @@
 #     playback (0x800A48C4) stopped at 2633, so the HUD shows and the alien
 #     that arrives at ~2640 attacks for real. The scene relies on the demo's
 #     last stick input carrying over, as in the game's own stick handling
-#     (--original-stick).
+#     (--original-stick);
+#   * map: level 8 section 5 from the level select bytes (0x800A4612, 0x800A4613),
+#     Cross dismisses the save prompt at 2900, then Ripley strafes through the
+#     side corridor into the next room, so two rooms are revealed.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -97,8 +100,8 @@ jpg "$TMP/launcher_controls.png" "$OUT/controls.jpg" 1280
 
 echo "in-game overlay (opens a window, about 40 seconds)"
 # pause menu, then Settings scrolled to the Gameplay and Enemy damage rows
-keys="F2,WAIT20,SHOT,Down,Return"
-for i in $(seq 13); do keys="$keys,Down"; done
+keys="F2,WAIT20,SHOT,Down,Down,Down,Return"
+for i in $(seq 16); do keys="$keys,Down"; done
 keys="$keys,SHOT,Escape,Escape"
 rm -rf "$TMP/save" && mkdir -p "$TMP/save"
 "$BIN" --play --skip-intro --disc "$DISC" --save-dir "$TMP/save" "${NEW_GAME[@]}" \
@@ -106,5 +109,15 @@ rm -rf "$TMP/save" && mkdir -p "$TMP/save"
     > "$TMP/log.txt" 2>&1
 jpg "$TMP/overlay_1.png" "$OUT/pause.jpg" 1280
 jpg "$TMP/overlay_2.png" "$OUT/settings.jpg" 1280
+
+echo "map (opens a window, about a minute)"
+rm -rf "$TMP/save" && mkdir -p "$TMP/save"
+"$BIN" --play --skip-intro --disc "$DISC" --save-dir "$TMP/save" "${NEW_GAME[@]}" \
+    --poke 622:800a4612:8:1 --poke 622:800a4613:5:1 --press 2900:cross:6 \
+    --stick 3000:320:0:128:128:128 --stick 3325:35:128:128:0:128 \
+    --shot 3375:"$TMP/map_game.png" --press 3380:map:2 --frames 3405 \
+    --overlay-keys 3390:SHOT --overlay-shot "$TMP/map" > "$TMP/log.txt" 2>&1
+jpg "$TMP/map_game.png" "$OUT/map_game.jpg" 960
+jpg "$TMP/map_1.png" "$OUT/map.jpg" 960
 
 ls -l "$OUT"

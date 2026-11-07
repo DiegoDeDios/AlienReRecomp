@@ -57,6 +57,7 @@ PKG=$OUT/release/$NAME
 rm -rf "$PKG" "$PKG.tar.gz"
 mkdir -p "$PKG/lib" "$PKG/licenses"
 cp $OUT/AlienResurrection "$PKG/"
+cp -R $OUT/textures "$PKG/"
 strip "$PKG/AlienResurrection"
 cp -L "$SDL_PREFIX/lib/libSDL3.so.0" "$PKG/lib/libSDL3.so.0"
 strip --strip-unneeded "$PKG/lib/libSDL3.so.0"

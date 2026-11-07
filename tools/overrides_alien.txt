@@ -1,13 +1,20 @@
 # Functions replaced by native code in src/runtime/native.c
 80082c4c  # libetc VSync wait helper (v_wait)
 80082ad4 wrap  # libetc VSync: save states (quick save / load) are taken on entry
+80030e68 wrap  # end of frame: wait for the refresh (adaptive CPU budget)
 800a81bc wrap  # screen-space quad subdivision (skipped for PGXP-precise quads)
 8005e8e8 wrap  # player movement speed helper (sprint)
 80020350 wrap  # main: adjust option defaults before the game starts
 800625cc wrap  # flashlight update (infinite flashlight)
+800524f0 wrap  # add a pickup to the inventory (ammo rebalance)
+80050730 wrap  # move an object (enemy leaps at 60 fps)
+80080fe4 wrap  # lights on level objects (flicker at 60 fps)
 8004dea8 wrap  # deliver a message to an object (enemy attack damage)
 800519d0 wrap  # apply damage to an object (acid damage to the player)
 8005ecbc wrap  # player update (camera: mouse look and right stick)
 80032530 wrap  # build the gameplay command block (movement stick)
 8001eec0 wrap  # per-frame camera setup: projection distance (field of view)
+80033a9c wrap  # HUD panels: move to the screen edges in widescreen
+800343fc wrap  # motion tracker: same
+80034a50 wrap  # crosshair: keep it on its projected point in widescreen
 80020848 wrap  # first-person weapon pass (keeps the original projection)

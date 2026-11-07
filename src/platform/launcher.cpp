@@ -166,29 +166,34 @@ SDL_GPUTexture *upload_rgba(const uint8_t *px, int w, int h) {
     return t;
 }
 
+void load_art() {
+    const char *base = SDL_GetBasePath();
+    std::string path = std::string(base ? base : "") + "textures/launcher_art.png";
+    SDL_Surface *png = SDL_LoadPNG(path.c_str());
+    if (!png) {
+        SDL_Log("launcher: %s: %s", path.c_str(), SDL_GetError());
+        return;
+    }
+    SDL_Surface *rgba = SDL_ConvertSurface(png, SDL_PIXELFORMAT_RGBA32);
+    SDL_DestroySurface(png);
+    if (!rgba)
+        return;
+    L.art = upload_rgba((const uint8_t *)rgba->pixels, rgba->w, rgba->h);
+    L.art_w = rgba->w, L.art_h = rgba->h;
+    SDL_DestroySurface(rgba);
+}
+
 /* ---- disc ---- */
 void check_disc() {
     char cue[1024] = "";
     L.disc = disc_check(L.cfg->disc, cue, sizeof cue, L.disc_msg, sizeof L.disc_msg);
-    if (L.art) {
-        SDL_WaitForGPUIdle(L.dev);
-        SDL_ReleaseGPUTexture(L.dev, L.art);
-        L.art = nullptr;
+    if (L.disc != DISC_OK)
+        return;
+    if (strcmp(cue, L.cfg->disc) || strcmp(cue, L.saved->disc)) {
+        snprintf(L.cfg->disc, sizeof L.cfg->disc, "%s", cue);
+        mark(&L.cfg->disc);
     }
-    if (L.disc == DISC_OK) {
-        if (strcmp(cue, L.cfg->disc) || strcmp(cue, L.saved->disc)) {
-            snprintf(L.cfg->disc, sizeof L.cfg->disc, "%s", cue);
-            mark(&L.cfg->disc);
-        }
-        int w, h;
-        uint8_t *px = disc_title_art(&w, &h);
-        if (px) {
-            L.art = upload_rgba(px, w, h);
-            L.art_w = w, L.art_h = h;
-            free(px);
-        }
-        disc_close();
-    }
+    disc_close();
 }
 
 void SDLCALL on_pick(void *, const char *const *files, int) {
@@ -268,39 +273,15 @@ void header(ImDrawList *dl, const char *title, float cx, float y) {
 void background(ImDrawList *dl) {
     const ImVec2 S = L.S;
     dl->AddRectFilled(ImVec2(0, 0), S, C_BG);
-    if (L.art) {
-        /* cover the window, but keep at least 75% of the art's width (the
-         * logo) visible; the art fades into the background colour */
-        float sc = fmaxf(S.x / L.art_w, S.y / L.art_h);
-        sc = fminf(sc, S.x / (0.75f * L.art_w));
-        float w = L.art_w * sc, h = L.art_h * sc;
-        ImVec2 p0((S.x - w) * 0.5f, (S.y - h) * 0.5f - S.y * 0.08f);
-        dl->AddImage(ImTextureRef((ImTextureID)(intptr_t)L.art), p0, ImVec2(p0.x + w, p0.y + h));
-        /* hide the "uploading data" caption under the logo */
-        float y0 = p0.y + h * 0.565f, y1 = p0.y + h * 0.605f;
-        dl->AddRectFilledMultiColor(ImVec2(0, y0), ImVec2(S.x, y1), C_BG & 0x00FFFFFF,
-                                    C_BG & 0x00FFFFFF, C_BG, C_BG);
-        dl->AddRectFilled(ImVec2(0, y1), S, C_BG);
-        /* soften the edges */
-        dl->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(S.x, p0.y + h * 0.12f), C_BG,
-                                    C_BG, C_BG & 0x00FFFFFF, C_BG & 0x00FFFFFF);
-        if (p0.x > -1.0f) {
-            float e = 0.10f * w;
-            dl->AddRectFilledMultiColor(ImVec2(p0.x, 0), ImVec2(p0.x + e, S.y), C_BG,
-                                        C_BG & 0x00FFFFFF, C_BG & 0x00FFFFFF, C_BG);
-            dl->AddRectFilledMultiColor(ImVec2(p0.x + w - e, 0), ImVec2(p0.x + w, S.y),
-                                        C_BG & 0x00FFFFFF, C_BG, C_BG, C_BG & 0x00FFFFFF);
-        }
-    } else {
-        /* no disc yet: a plain rendition of the title */
-        float cx = S.x * 0.5f, y = S.y * 0.22f;
-        float s1 = S.y * 0.17f;
-        glow_bar(dl, cx, y + s1 * 0.93f, S.x * 0.40f, S.y * 0.035f, C_ACCENT, 0.45f);
-        glow_bar(dl, cx, y + s1 * 1.04f, S.x * 0.45f, 2.0f * L.U, C_ACCENT, 0.9f);
-        text_spaced(dl, L.f_title, s1, cx, y, C_TEXT, "ALIEN", s1 * 0.10f);
-        text_spaced(dl, L.f_title, s1 * 0.30f, cx, y + s1 * 1.02f, C_HOT, "RESURRECTION",
-                    s1 * 0.13f);
-    }
+    if (!L.art)
+        return;
+    /* The art is the top of a 16:9 picture and its edges are the background colour.
+     * It covers the window, but always shows the logo, which is under 80% of its width. */
+    float full_h = L.art_w * 9.0f / 16.0f;
+    float sc = fminf(fmaxf(S.x / L.art_w, S.y / full_h), S.x / (0.8f * L.art_w));
+    float w = L.art_w * sc, h = L.art_h * sc;
+    ImVec2 p0((S.x - w) * 0.5f, (S.y - full_h * sc) * 0.5f);
+    dl->AddImage(ImTextureRef((ImTextureID)(intptr_t)L.art), p0, ImVec2(p0.x + w, p0.y + h));
 }
 
 /* ---- main menu ---- */
@@ -864,6 +845,11 @@ void draw_settings(ImDrawList *dl) {
                "Removes the PlayStation's wobbling polygons and warping textures by keeping "
                "vertices at full precision and correcting texture perspective."))
         mark(&c->pgxp);
+    hw_only_tag();
+    if (toggle("HD textures", &c->hd_textures,
+               "Draws new high resolution artwork in place of the game's own, such as the "
+               "title logo. Off shows the original textures."))
+        mark(&c->hd_textures);
     ImGui::EndDisabled();
     if (toggle("Smooth scaling", &c->smooth,
                "Filter the image when scaling it to the window. Off gives sharp, square pixels."))
@@ -940,7 +926,8 @@ void draw_settings(ImDrawList *dl) {
             ci = i;
     if (choice("Frame rate boost", &ci, cpus, 5,
                "Emulated CPU speed. On original hardware busy scenes drop to 20-30 fps; 300% "
-               "keeps a steady 60 fps. The game's timing is unaffected.")) {
+               "keeps a steady 60 fps, with more in busy scenes if your computer can afford "
+               "it. 100% is never raised. The game's timing is unaffected.")) {
         c->cpu_pct = cpv[ci];
         mark(&c->cpu_pct);
     }
@@ -1577,6 +1564,7 @@ extern "C" bool launcher_run(SDL_Window *win, Settings *cfg, Settings *saved, co
 
     if (cfg->fullscreen)
         SDL_SetWindowFullscreen(win, true);
+    load_art();
     check_disc();
     if (L.disc != DISC_OK)
         L.menu_sel = 1; /* "select disc image" */
@@ -1752,29 +1740,52 @@ static struct {
     Uint64 shown, until;
 } T;
 
+extern "C" void toast_prepare(SDL_Window *win, SDL_GPUDevice *dev, SDL_GPUTextureFormat fmt) {
+    if (L.imgui_ready || !win || !dev || fmt == SDL_GPU_TEXTUREFORMAT_INVALID)
+        return;
+    imgui_setup(win, dev, fmt);
+    ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);
+    L.imgui_ready = true;
+}
+
 extern "C" void toast_show(SDL_Window *win, SDL_GPUDevice *dev, SDL_GPUTextureFormat fmt,
                            const char *text, bool error) {
-    if (!win || !dev || fmt == SDL_GPU_TEXTUREFORMAT_INVALID)
+    toast_prepare(win, dev, fmt);
+    if (!L.imgui_ready)
         return;
-    if (!L.imgui_ready) {
-        imgui_setup(win, dev, fmt);
-        ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);
-        L.imgui_ready = true;
-    }
     snprintf(T.text, sizeof T.text, "%s", text);
     T.error = error;
     T.shown = SDL_GetTicks();
     T.until = T.shown + (error ? 3500 : 1800);
 }
 
-extern "C" bool toast_frame(void) {
-    if (!T.until || L.ingame || !L.imgui_ready)
+/* world units from the top of the screen to the bottom */
+static const float MAP_VIEW_UNITS = 2400.0f;
+
+static void draw_map(ImDrawList *dl, ImVec2 S, const AutomapView *m) {
+    float U = S.y / 720.0f, scale = S.y / MAP_VIEW_UNITS;
+    ImVec2 c(S.x * 0.5f, S.y * 0.5f);
+    dl->AddRectFilled(ImVec2(0, 0), S, IM_COL32(0, 0, 0, 255));
+    for (int i = 0; i < m->nsegs; i++) {
+        const AutomapSeg &s = m->segs[i];
+        dl->AddLine(ImVec2(c.x + (s.x0 - m->x) * scale, c.y + (s.z0 - m->z) * scale),
+                    ImVec2(c.x + (s.x1 - m->x) * scale, c.y + (s.z1 - m->z) * scale),
+                    C_ACCENT, 1.5f * U);
+    }
+    /* the player: a fixed marker whose tip points at their position */
+    float w = 9 * U, h = 16 * U;
+    dl->AddTriangleFilled(ImVec2(c.x - w, c.y - h), ImVec2(c.x + w, c.y - h), c,
+                          IM_COL32(255, 255, 255, 255));
+}
+
+extern "C" bool toast_frame(const AutomapView *map) {
+    if (L.ingame || !L.imgui_ready)
         return false;
     Uint64 now = SDL_GetTicks();
-    if (now >= T.until) {
+    if (T.until && now >= T.until)
         T.until = 0;
+    if (!T.until && !map)
         return false;
-    }
     /* drawn over the game: leave the mouse cursor (captured for mouse
      * look) alone */
     ImGuiIO &io = ImGui::GetIO();
@@ -1784,13 +1795,19 @@ extern "C" bool toast_frame(void) {
     ImGui::NewFrame();
     io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
     ImVec2 S = io.DisplaySize;
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    if (map)
+        draw_map(dl, S, map);
+    if (!T.until) {
+        ImGui::Render();
+        return true;
+    }
     float U = fmaxf(0.5f, fminf(S.y / 720.0f, S.x / 1100.0f));
     /* fade in and out */
     float a = fminf(1.0f, fminf((float)(now - T.shown) / 120.0f, (float)(T.until - now) / 400.0f));
     float fs = 21 * U, pad = 14 * U;
     ImVec2 ts = text_size(L.f_label, fs, T.text);
     ImVec2 p0(28 * U, S.y - 36 * U - ts.y - pad * 2), p1(p0.x + ts.x + pad * 2 + 10 * U, S.y - 36 * U);
-    ImDrawList *dl = ImGui::GetForegroundDrawList();
     ImU32 edge = T.error ? C_WARN : C_ACCENT;
     dl->AddRectFilled(p0, p1, IM_COL32(4, 7, 6, (int)(225 * a)), 6 * U);
     dl->AddRectFilled(p0, ImVec2(p0.x + 4 * U, p1.y), (edge & 0x00FFFFFF) | ((ImU32)(255 * a) << 24),

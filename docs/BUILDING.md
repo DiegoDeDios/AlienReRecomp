@@ -168,9 +168,11 @@ Options override `config.ini` for one run; most are for testing.
 | `--aspect W:H` | display aspect: `16:9` (default), `16:10`, `21:9`, or `4:3` for the original look |
 | `--fov DEG` | horizontal field of view in degrees, up to 100 (default `original`: 67 at 16:9, 53 at 4:3) |
 | `--scale N` | internal resolution multiplier for the GPU renderer (default 4) |
-| `--cpu-speed PCT` | emulated CPU speed (default 300 = steady 60 fps; 100 = original hardware) |
+| `--cpu-speed PCT` | emulated CPU speed, raised automatically in busy scenes (default 300 = steady 60 fps; 100 = original hardware, never raised) |
 | `--no-vsync` | present without vsync (lowest latency, may tear) |
 | `--no-pgxp` | original PS1 geometry: integer vertices and affine (warping) textures |
+| `--no-hd-textures` | the game's own textures instead of the HD replacements |
+| `--textures DIR` | use only this texture pack folder |
 | `--sprint-speed PCT` | player speed while sprinting (default 190; 100 turns sprint off) |
 | `--no-infinite-flashlight` | the flashlight battery runs down and recharges as in the original |
 | `--enemy-damage PCT`, `--enemy-damage GROUP=PCT` | damage taken from all enemies / one kind (`alien_warriors`, `facehuggers`, `chestbursters`, `queen`, `newborn`, `marines`, `sentry_tank`, `acid_blood`), 0–200, default 100; repeatable |
@@ -182,7 +184,7 @@ Options override `config.ini` for one run; most are for testing.
 | `--interpret` | run a recompiled build's game code through the interpreter |
 | `--headless --frames N --shot F:file.png` | run without a window, write screenshots (ignores `config.ini`) |
 | `--record F:N:STEP:PREFIX` | write N screenshots, one every STEP frames from frame F, as `PREFIX_0000.png`… |
-| `--press F:button[:len]`, `--stick F:len:lx:ly:rx:ry`, `--mouse F:len:dx:dy`, `--fuzz F:seed` | scripted / random input (testing; `sprint` is a button name too; mouse motion in counts per frame) |
+| `--press F:button[:len]`, `--stick F:len:lx:ly:rx:ry`, `--mouse F:len:dx:dy`, `--fuzz F:seed` | scripted / random input (testing; `sprint` and `map` are button names too; mouse motion in counts per frame) |
 | `--launcher-shot file.png [--launcher-page settings\|controls]`, `--launcher-keys K1,K2,…` | render a launcher page to PNG / drive it with scripted keys (testing, docs) |
 | `--overlay-keys F:T1,T2,…`, `--overlay-shot PREFIX` | from frame F, drive the in-game overlay with tokens: SDL key names (`F2`, `Down`, `Return`…), `pad:back+start[:ticks]` (a virtual controller), `WAITn`, and `SHOT` (writes the window with the overlay to `PREFIX_N.png`) |
 | `--wav file.wav` | record the audio output |
@@ -208,6 +210,7 @@ src/render/       SDL GPU hardware renderer and presentation; shaders/ (GLSL)
 src/platform/     SDL3 frontend: launcher (Dear ImGui), settings/config.ini,
                   input bindings, window, audio, pacing, screenshots
 third_party/      Dear ImGui (MIT), vendored
+assets/textures/  texture pack shipped with the port (new artwork, no game data)
 cmake/, packaging/  Windows cross-compilation toolchain and release files
 docs/             building, architecture and reverse-engineering notes
 docs/media/       README screenshots and animations
