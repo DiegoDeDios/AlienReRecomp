@@ -380,6 +380,16 @@ Yes: branches in progress are published as pre-releases, marked as such on the
 may have new problems, and their quick saves do not carry over to the final
 release.
 
+#### Is AI used in this project?
+
+AI is used in the development of this project, but no generative AI is or will
+be used for image and texture generation or upscaling. The 4K version of the logo
+was made by me in Inkscape, and texture packs are used with due credit to the
+original artists (see [Credits](#credits)).
+
+(yes, I know the app logo can fall in the category but I promised I'm working on a
+human-made one)
+
 #### Where do I report a bug?
 
 In the [issue tracker](https://github.com/DiegoDeDios/AlienReRecomp/issues).
