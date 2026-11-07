@@ -379,7 +379,10 @@ Lights attached to level objects are updated by `0x80080FE4`, and some of its
 modes act once per call, so at 60 fps random flashes came twice as often and half
 as long. A wrapper runs those modes (0, 1, 5, 6, 7) every other vblank at a step
 of 1, with the step set to 2 for the call so the animation clock in the same
-routine keeps its speed. Steps of 2 or more and demos are left alone.
+routine keeps its speed. Modes 0, 1, 5 and 7 may also brighten at most once per 20
+vblanks, 3 times a second, shared across these lights: a later rise is undone. This
+covers these lights only, not muzzle flashes, explosions or other effects. Demos are
+left alone, because a flash held back changes the use of random numbers.
 
 ### Infinite flashlight
 

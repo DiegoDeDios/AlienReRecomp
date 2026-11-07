@@ -663,27 +663,60 @@ void ALIEN_80050730(CPU *c) {
 
 /* Flickering lights. The routine for lights attached to level objects (0x80080FE4)
  * has modes that act once per call: random flashes (7), strobes (0, 1, 5) and
- * rotating beacons (6). At 60 fps they run twice as often as at 30 and a flash
- * lasts half as long, about ten full-scene flashes a second. At a step of 1 they
- * run every other vblank with a step of 2, as at 30 fps. Other modes use the step
- * already, and demos replay recorded steps. */
+ * rotating beacons (6). At 60 fps they ran twice as often as at 30 and a flash
+ * lasted half as long. At a step of 1 they run every other vblank with a step of 2,
+ * as at 30 fps. Other modes use the step already.
+ * For photosensitive players, flashes and strobes also brighten at most once per
+ * 20 vblanks, 3 times a second, across all these lights at any frame rate.
+ * Demos are left alone: a held-back flash changes the use of random numbers. */
 #define LIGHT_MODES_PER_CALL 0xE3u /* bits 0, 1, 5, 6, 7 */
+#define LIGHT_MODES_FLASHING 0xA3u /* bits 0, 1, 5, 7 */
 #define VBLANK_COUNT         0x800A86A8u /* gp+0x4134: counter at this frame */
+#define FLASH_MIN_GAP        20
+#define LIGHT_INTENSITY      34
+#define LIGHT_LAST_INTENSITY 36
 
-static bool light_acts_per_call(uint32_t obj) {
+static uint32_t g_last_flash;
+
+static bool light_mode_in(uint32_t obj, uint32_t modes) {
     uint32_t mode = mem_r16(mem_r32(obj + 124) + 46);
-    return mode < 8 && ((LIGHT_MODES_PER_CALL >> mode) & 1);
+    return mode < 8 && ((modes >> mode) & 1);
 }
 
 void ALIEN_80080FE4__orig(CPU *c);
-void ALIEN_80080FE4(CPU *c) {
-    if (mem_r32(FRAME_STEP) != 1 || mem_r32(DEMO_PLAYBACK) || !light_acts_per_call(c->r[4])) {
+
+static void light_update_limited(CPU *c) {
+    uint32_t obj = c->r[4];
+    if (!light_mode_in(obj, LIGHT_MODES_FLASHING)) {
         ALIEN_80080FE4__orig(c);
         return;
     }
-    if (mem_r32(VBLANK_COUNT) & 1)
-        return;
-    mem_w32(FRAME_STEP, 2);
+    uint32_t light = mem_r32(mem_r32(obj + 100) + 20);
+    uint16_t intensity = mem_r16(light + LIGHT_INTENSITY);
+    uint16_t last = mem_r16(light + LIGHT_LAST_INTENSITY);
     ALIEN_80080FE4__orig(c);
-    mem_w32(FRAME_STEP, 1);
+    if ((int16_t)mem_r16(light + LIGHT_INTENSITY) <= (int16_t)intensity)
+        return;
+    uint32_t now = mem_r32(VBLANK_COUNT);
+    if (now - g_last_flash >= FLASH_MIN_GAP) {
+        g_last_flash = now;
+        return;
+    }
+    mem_w16(light + LIGHT_INTENSITY, intensity);
+    mem_w16(light + LIGHT_LAST_INTENSITY, last);
+}
+
+void ALIEN_80080FE4(CPU *c) {
+    if (mem_r32(DEMO_PLAYBACK)) {
+        ALIEN_80080FE4__orig(c);
+        return;
+    }
+    bool every_other = mem_r32(FRAME_STEP) == 1 && light_mode_in(c->r[4], LIGHT_MODES_PER_CALL);
+    if (every_other && (mem_r32(VBLANK_COUNT) & 1))
+        return;
+    if (every_other)
+        mem_w32(FRAME_STEP, 2);
+    light_update_limited(c);
+    if (every_other)
+        mem_w32(FRAME_STEP, 1);
 }
