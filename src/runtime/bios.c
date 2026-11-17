@@ -359,6 +359,7 @@ void bios_load_exe(CPU *c, const char *path, bool run) {
     free(buf);
     char base[64];
     snprintf(base, sizeof base, "%s", path_basename(name));
+    region_exe_loaded(base);
     const Module *m = module_find_by_exe(base);
     if (!m)
         fatal("no recompiled module for %s", base);

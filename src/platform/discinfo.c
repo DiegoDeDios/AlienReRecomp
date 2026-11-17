@@ -100,30 +100,15 @@ DiscStatus disc_check(const char *path, char *cue, size_t cue_n, char *msg, size
         return DISC_UNREADABLE;
     }
     uint32_t lba, size;
-    char cnf[2048 + 1];
-    if (!iso_find("SYSTEM.CNF", &lba, &size) || size > 2048 || !iso_read(lba, (uint8_t *)cnf, size)) {
+    if (!iso_find("SYSTEM.CNF", &lba, &size)) {
         disc_close();
         snprintf(msg, msg_n, "This is not a PlayStation game disc.");
         return DISC_UNREADABLE;
     }
-    cnf[size] = 0;
-    if (!strstr(cnf, "SLUS_006.33")) {
-        char boot[64] = "?";
-        const char *b = strstr(cnf, "cdrom:");
-        if (b) {
-            b += 6;
-            while (*b == '\\')
-                b++;
-            size_t i = 0;
-            while (b[i] && b[i] != ';' && b[i] != '\r' && b[i] != '\n' && i < sizeof boot - 1)
-                boot[i] = b[i], i++;
-            boot[i] = 0;
-        }
+    /* USA (SLUS-00633) or Europe (SLES-02913), runtime/region.c */
+    if (!region_detect(msg, msg_n)) {
         disc_close();
-        snprintf(msg, msg_n, "Unsupported disc (%s). This port needs Alien Resurrection (USA), SLUS-00633.",
-                 boot);
         return DISC_WRONG_GAME;
     }
-    snprintf(msg, msg_n, "Alien Resurrection (USA) - SLUS-00633");
     return DISC_OK;
 }

@@ -334,8 +334,22 @@ Building from source with your own disc gives you the recompiled version
 #### Is this an emulator? Can it run other games?
 
 No. The runtime only implements what *Alien Resurrection* uses, and the
-port only accepts the USA release (SLUS-00633). Other games, and other
-releases of this one, are not supported.
+port only accepts the USA release (SLUS-00633) and the European one
+(SLES-02913). Other games, and other releases of this one, are not
+supported.
+
+#### Does the European (PAL) disc work?
+
+Yes. Its game program is the USA one rebuilt at slightly different
+addresses; the port finds them (`src/runtime/region.c`), so every
+enhancement works the same. It runs as a 60 Hz game, like the USA release:
+the European program supports both video modes and is switched to NTSC at
+start (in PAL mode it would scale its clock for a 50 Hz display, which the
+port does not emulate). Its five languages are offered by the game's own
+language screen after the intro; `language = fr` (or `en`, `de`, `it`,
+`es`) under `[game]` in `config.ini`, or `--language fr`, picks one
+without the screen, also when the intro is skipped. Builds with
+recompiled code run this release through the interpreter.
 
 #### Is this based on a decompilation?
 

@@ -1089,6 +1089,7 @@ static void parse_args(int argc, char **argv) {
                    "  --play          start the game directly (no launcher)\n"
                    "  --disc PATH     disc image: the .cue file or the folder containing it\n"
                    "  --skip-intro    skip the boot loader and intro movies\n"
+                   "  --language ID   European disc: en, fr, de, it or es\n"
                    "  --fullscreen    start in fullscreen\n"
                    "  --aspect W:H    display aspect, e.g. 16:9 (default), 16:10, 21:9, 4:3\n"
                    "  --scale N       internal resolution multiplier (default 4)\n"
@@ -1247,6 +1248,10 @@ static void parse_args(int argc, char **argv) {
             g_cfg.fullscreen = true;
         } else if (!strcmp(a, "--skip-intro")) {
             g_cfg.skip_intro = true;
+        } else if (!strcmp(a, "--language") && v) {
+            snprintf(g_cfg.language, sizeof g_cfg.language, "%s",
+                     region_language_code(v) >= 0 ? v : "");
+            i++;
         } else if (!strcmp(a, "--no-launcher") || !strcmp(a, "--play")) {
             opt.no_launcher = true;
         } else if (!strcmp(a, "--launcher-shot") && v) {
@@ -1357,6 +1362,7 @@ static void apply_settings(const Settings *c) {
     g_enemy_damage_pct = c->enemy_damage_pct;
     memcpy(g_enemy_damage_group_pct, c->enemy_damage_group_pct, sizeof g_enemy_damage_group_pct);
     apply_camera(c);
+    g_eu_language = region_language_code(c->language);
     if (!opt.exe && c->skip_intro)
         opt.exe = "ALIEN.BIN";
 }
@@ -1431,8 +1437,6 @@ int main(int argc, char **argv) {
             return 0;
     }
     apply_settings(&g_cfg);
-    if (!opt.exe)
-        opt.exe = "SLUS_006.33";
     char cue[1024] = "";
     if (!g_cfg.disc[0] || !disc_resolve(g_cfg.disc, cue, sizeof cue) || !disc_open(cue)) {
         fprintf(stderr, "Disc image not found%s%s. Choose it in the launcher, or pass it with --disc:\n"
@@ -1440,6 +1444,23 @@ int main(int argc, char **argv) {
                 g_cfg.disc[0] ? ": " : "", g_cfg.disc);
         return 1;
     }
+    {
+        char what[160];
+        if (!region_detect(what, sizeof what)) {
+            fprintf(stderr, "%s\n", what);
+            LOGE("main", "%s", what);
+            return 1;
+        }
+        LOGI("main", "disc: %s", what);
+        /* the recompiled code is the USA program's: the European one is
+         * interpreted from the disc */
+        if (g_region == REGION_EUROPE && !g_interp_only) {
+            LOGI("main", "European disc: game code runs in the interpreter");
+            g_interp_only = true;
+        }
+    }
+    if (!opt.exe)
+        opt.exe = region_boot_exe();
 
     /* widescreen needs the hardware renderer to keep 2D elements in shape */
     ws_configure(opt.software ? 4.0f / 3.0f : opt.aspect);
