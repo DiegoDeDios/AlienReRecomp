@@ -193,6 +193,7 @@ uint32_t disc_track_count(void);
 uint32_t disc_track_start(int track); /* LBA (absolute, incl. 2s pregap) */
 uint32_t disc_total_sectors(void);
 bool disc_track_is_audio(int track);
+bool disc_sector_is_audio(uint32_t lba);
 void cdrom_init(void);
 uint32_t cdrom_read(uint32_t addr);
 void cdrom_write(uint32_t addr, uint32_t v);
