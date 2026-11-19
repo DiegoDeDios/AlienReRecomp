@@ -168,10 +168,6 @@ static void adsr_step(Voice *v) {
         v->adsr_level = 0;
         return;
     }
-    if (v->adsr_wait > 0) {
-        v->adsr_wait--;
-        return;
-    }
     int shift, step;
     bool exp_mode, decrease;
     uint16_t lo = v->adsr_lo, hi = v->adsr_hi;
@@ -185,6 +181,7 @@ static void adsr_step(Voice *v) {
     case ADSR_DECAY:
         exp_mode = true;
         decrease = true;
+        /* This field is already a shift, not a four-times-slower rate. */
         shift = (lo >> 4) & 0xF;
         step = -8;
         break;
@@ -202,10 +199,27 @@ static void adsr_step(Voice *v) {
         break;
     }
     int cycles = 1 << (shift - 11 > 0 ? shift - 11 : 0);
-    int32_t delta = step << (11 - shift > 0 ? 11 - shift : 0);
+    /* Multiplication also avoids undefined left shifts of negative steps. */
+    int32_t delta = step * (1 << (11 - shift > 0 ? 11 - shift : 0));
     int32_t level = v->adsr_level;
     if (exp_mode && !decrease && level > 0x6000)
         cycles *= 4;
+    /* Rates made entirely of ones hold the envelope. They must not be
+     * mistaken for a slow-but-eventually-free channel. */
+    if ((v->phase == ADSR_RELEASE && (hi & 0x1F) == 0x1F) ||
+        (v->phase == ADSR_SUSTAIN && ((hi >> 6) & 0x7F) == 0x7F) ||
+        (v->phase == ADSR_ATTACK && ((lo >> 8) & 0x7F) == 0x7F))
+        return;
+    /* Keep valid countdowns unchanged. A live rate edit, or a quicksave
+     * made by the old four-times-shift decoder, may contain a countdown
+     * longer than this rate can produce. Rebase that countdown, without
+     * resetting the voice, sample position, phase or envelope level. */
+    if (v->adsr_wait > cycles - 1)
+        v->adsr_wait = cycles - 1;
+    if (v->adsr_wait > 0) {
+        v->adsr_wait--;
+        return;
+    }
     if (exp_mode && decrease)
         delta = (delta * level) >> 15;
     level += delta;
