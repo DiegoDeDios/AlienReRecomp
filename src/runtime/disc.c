@@ -12,6 +12,7 @@
 
 typedef struct {
     FILE *fp;
+    uint8_t *cache;
     uint32_t start;   /* absolute LBA of first sector in this file */
     uint32_t sectors;
 } BinFile;
@@ -34,9 +35,11 @@ static uint32_t msf_to_frames(int m, int s, int f) {
 }
 
 void disc_close(void) {
-    for (int i = 0; i < g_nfiles; i++)
+    for (int i = 0; i < g_nfiles; i++) {
+        free(g_files[i].cache);
         if (g_files[i].fp)
             fclose(g_files[i].fp);
+    }
     memset(g_files, 0, sizeof g_files);
     memset(g_tracks, 0, sizeof g_tracks);
     g_nfiles = g_ntracks = 0;
@@ -111,6 +114,25 @@ bool disc_open(const char *cue_path) {
         }
     }
     fclose(cue);
+    /* The complete PS1 image is small enough to retain on desktop hosts.
+     * Read it before gameplay so a dormant/removable drive cannot block a
+     * sector event (and audio generation) in the middle of a room change.
+     * Keep the original file path as a fallback when memory is unavailable. */
+    size_t cached = 0;
+    const size_t budget = 512u * 1024u * 1024u;
+    for (int i = 0; i < g_nfiles; i++) {
+        BinFile *b = &g_files[i];
+        size_t bytes = (size_t)b->sectors * 2352u;
+        if (bytes > budget - cached || !bytes) continue;
+        uint8_t *data = malloc(bytes);
+        if (!data) continue;
+        rewind(b->fp);
+        if (fread(data, 1, bytes, b->fp) != bytes) {
+            free(data); clearerr(b->fp); continue;
+        }
+        b->cache = data; cached += bytes;
+    }
+    LOGI("disc", "cached %zu bytes for sector streaming", cached);
     LOGI("disc", "opened %s: %d tracks, %u sectors", cue_path, g_ntracks,
          g_total);
     for (int i = 1; i <= g_ntracks; i++)
@@ -123,6 +145,10 @@ bool disc_read_sector(uint32_t lba, uint8_t *raw) {
     for (int i = 0; i < g_nfiles; i++) {
         BinFile *b = &g_files[i];
         if (lba >= b->start && lba < b->start + b->sectors) {
+            if (b->cache) {
+                memcpy(raw, b->cache + (size_t)(lba - b->start) * 2352u, 2352);
+                return true;
+            }
             fseek(b->fp, (long)(lba - b->start) * 2352, SEEK_SET);
             return fread(raw, 1, 2352, b->fp) == 2352;
         }
