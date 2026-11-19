@@ -270,7 +270,9 @@ static void read_tick(int64_t now, int64_t late) {
             LOGD("cd", "playing lba %u muted=%d vol=%02X/%02X/%02X/%02X ring=%d", cd.lba, cd.muted,
                  cd.vol[0], cd.vol[1], cd.vol[2], cd.vol[3], ring_count());
         cd.stat |= STAT_PLAY;
-        if (!cd.muted) {
+        /* Play may start in the data region before the music track. Those
+         * sectors contain sync/subheaders, not stereo PCM samples. */
+        if (!cd.muted && disc_sector_is_audio(cd.lba)) {
             for (int i = 0; i < 588; i++) {
                 int16_t l = (int16_t)(raw[i * 4] | (raw[i * 4 + 1] << 8));
                 int16_t r = (int16_t)(raw[i * 4 + 2] | (raw[i * 4 + 3] << 8));

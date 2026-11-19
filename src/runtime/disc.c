@@ -140,6 +140,13 @@ uint32_t disc_track_start(int track) {
 bool disc_track_is_audio(int track) {
     return track >= 1 && track <= g_ntracks && g_tracks[track].audio;
 }
+bool disc_sector_is_audio(uint32_t lba) {
+    if(lba>=g_total) return false;
+    int track=0;
+    for(int i=1;i<=g_ntracks;i++)
+        if(g_tracks[i].index1<=lba) track=i;
+    return disc_track_is_audio(track);
+}
 uint32_t disc_total_sectors(void) { return g_total; }
 
 /* ------------------------------------------------------------------ */
