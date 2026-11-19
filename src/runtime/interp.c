@@ -11,6 +11,7 @@
  * same register/memory moves of projected vertices.
  */
 #include "psx.h"
+#include "locomotion.h"
 #include "savestate.h"
 
 /* When true, jal/jalr targets that have recompiled code are executed
@@ -52,7 +53,7 @@ void interp_run(CPU *c, uint32_t pc, uint32_t stop_ra) {
         uint32_t p = pc & 0x1FFFFFFFu;
         if (p >= 0x00200000 && !(p >= 0x1FC00000))
             fatal("interpreter: pc out of RAM: %08X", pc);
-        uint32_t w = mem_r32(pc);
+        uint32_t w = locomotion_instruction(pc, mem_r32(pc));
         c->pc = pc;
         if (++g_steps % 64 == 0) {
             c->cycles += (64 * g_cycle_scale) >> 4;
