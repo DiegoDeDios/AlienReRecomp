@@ -827,6 +827,17 @@ void draw_settings(ImDrawList *dl) {
         }
         ImGui::EndDisabled();
     }
+    {
+        float vd = (float)c->view_distance;
+        if (slider("View distance", &vd, 100, SETTINGS_VIEW_DISTANCE_MAX, 25,
+                   vd <= 100 ? "Original" : "%.0f%%",
+                   "How far away the scene fades to black. The game darkens the scene with "
+                   "distance, so enemies can shoot from the dark; this pushes the fade further "
+                   "away, up to 3 times (most of a long corridor). Added by this port.")) {
+            c->view_distance = (int)vd;
+            mark(&c->view_distance);
+        }
+    }
     static const char *const scales[] = {"1x (240p)", "2x (480p)", "3x (720p)", "4x (960p)",
                                          "5x (1200p)", "6x (1440p)", "7x (1680p)", "8x (1920p)"};
     int si = c->internal_scale - 1;
