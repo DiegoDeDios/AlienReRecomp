@@ -113,8 +113,25 @@ bool ws_projected(int32_t x, int32_t y) {
  * at 30 fps or lower, so single frames without drawing are normal) */
 #define WS_HOLD_FRAMES 12
 
+/* The USA item-use path requests clip character+4, and the gameplay loop
+ * calls the movie player with a2=1 (retain both scene buffers). The pending
+ * flag stays set throughout playback and is cleared only after return.
+ * Read guest state rather than latching host call state: quickloading in
+ * the middle of a movie must make the same decision immediately. Exact
+ * code guards keep unrelated modules/versions and full-screen movies out. */
+bool ws_autodoc_scene(const uint8_t *ram,size_t size) {
+    if(!ram || size<=0xA87B4u)return false;
+    uint32_t call,retain,clear,branch,item;
+    memcpy(&call,ram+0x202A0,4);memcpy(&retain,ram+0x202A4,4);
+    memcpy(&clear,ram+0x202C4,4);memcpy(&branch,ram+0x3716C,4);
+    memcpy(&item,ram+0x52F8C,4);
+    return call==0x0C00DC53u && retain==0x24060001u &&
+      clear==0xA02047A8u && branch==0x14C00015u && item==0x24A50004u &&
+      ram[0xA47A8]==1 && ram[0xA87B4]>=4 && ram[0xA87B4]<=7;
+}
+
 void ws_new_frame(void) {
-    if (g_ws_3d_count)
+    if (g_ws_3d_count || ws_autodoc_scene(g_ram, sizeof g_ram))
         g_idle = 0;
     else if (g_idle < WS_HOLD_FRAMES)
         g_idle++;
