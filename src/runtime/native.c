@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "camera.h"
+#include "portal_visibility.h"
 #include "enemy_damage.h"
 #include "pgxp.h"
 #include "psx.h"
@@ -719,4 +720,10 @@ void ALIEN_80080FE4(CPU *c) {
     light_update_limited(c);
     if (every_other)
         mem_w32(FRAME_STEP, 1);
+}
+
+void ALIEN_80035160__orig(CPU *c);
+void ALIEN_80035160(CPU *c) {
+    c->r[6] = portal_visibility_depth(c);
+    ALIEN_80035160__orig(c);
 }
