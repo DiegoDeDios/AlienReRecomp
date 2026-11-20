@@ -28,15 +28,15 @@ typedef enum {
     DISC_NONE,        /* nothing selected */
     DISC_NOT_FOUND,   /* no cue sheet at/next to the path */
     DISC_UNREADABLE,  /* cue/track files missing or not a PS1 data disc */
-    DISC_WRONG_GAME,  /* readable, but not Alien Resurrection (USA) */
+    DISC_WRONG_GAME,  /* readable, but not Alien Resurrection (USA or Europe) */
 } DiscStatus;
 
 /* Resolve `path` to a cue sheet (written to cue) without opening it. */
 bool disc_resolve(const char *path, char *cue, size_t n);
 
-/* Resolve and open the disc, check SYSTEM.CNF for SLUS_006.33. On success
- * the disc stays open. `msg` gets a short description for the player either
- * way. */
+/* Resolve and open the disc, check SYSTEM.CNF for SLUS_006.33 or
+ * SLES_029.13 and set g_region. On success the disc stays open. `msg` gets
+ * a short description for the player either way. */
 DiscStatus disc_check(const char *path, char *cue, size_t cue_n, char *msg, size_t msg_n);
 
 #ifdef __cplusplus

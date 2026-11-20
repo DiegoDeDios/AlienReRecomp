@@ -83,7 +83,7 @@ static bool lookup(int g, uint32_t k) {
  * from a table of per-line (x, y) offsets rebuilt every frame (see FINDINGS.md).
  * The moved point must count as projected too, or the weapon, which is drawn in
  * the overlay slots, is taken for 2D. */
-#define RIPPLE_TABLE_PTR 0x800A8758u
+#define RIPPLE_TABLE_PTR rg(0x800A8758u)
 #define RAM_SIZE 0x200000u
 
 void ws_record(int32_t x, int32_t y) {

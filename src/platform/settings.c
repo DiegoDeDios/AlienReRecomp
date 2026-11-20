@@ -311,6 +311,9 @@ bool settings_load(Settings *s, const char *path) {
         if (!strcmp(sect, "game")) {
             if (!strcmp(k, "disc")) snprintf(s->disc, sizeof s->disc, "%s", v);
             else if (!strcmp(k, "skip_intro")) s->skip_intro = parse_bool(v);
+            else if (!strcmp(k, "language"))
+                snprintf(s->language, sizeof s->language, "%s",
+                         region_language_code(v) >= 0 ? v : "");
         } else if (!strcmp(sect, "video")) {
             if (!strcmp(k, "widescreen")) s->widescreen = parse_bool(v);
             else if (!strcmp(k, "aspect")) {
@@ -383,7 +386,9 @@ bool settings_save(const Settings *s, const char *path) {
         return false;
     const char *tf[2] = {"false", "true"};
     fprintf(f, "# Alien Resurrection native port settings (written by the launcher)\n\n");
-    fprintf(f, "[game]\ndisc = %s\nskip_intro = %s\n\n", s->disc, tf[s->skip_intro]);
+    fprintf(f, "[game]\ndisc = %s\nskip_intro = %s\n", s->disc, tf[s->skip_intro]);
+    fprintf(f, "# European disc: en, fr, de, it or es (ask = the game's language screen)\n");
+    fprintf(f, "language = %s\n\n", s->language[0] ? s->language : "ask");
     char fov[16];
     if (s->fov > 0)
         snprintf(fov, sizeof fov, "%d", s->fov);

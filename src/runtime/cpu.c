@@ -83,6 +83,9 @@ static void modules_setup(void) {
 
 const Module *module_find_by_exe(const char *name) {
     modules_setup();
+    /* the European boot program takes the USA one's place (region.c) */
+    if (!strcasecmp(name, region_boot_exe()))
+        return &g_modules[1];
     for (int i = 0; i < 2; i++)
         if (!strcasecmp(g_modules[i].name, name))
             return &g_modules[i];
@@ -140,14 +143,20 @@ bool g_interp_only; /* --interpret: run the game code in the interpreter */
 /* native overrides of the active module: bitmap of their addresses (one
  * bit per RAM word) so the interpreter can test branch targets cheaply */
 static uint8_t g_ov_bits[0x200000 / 4 / 8];
+/* each override's address in the release on the disc (region.c: rg) */
+static uint32_t g_ov_addr[64];
 
 static void overrides_activate(const Module *m) {
     memset(g_ov_bits, 0, sizeof g_ov_bits);
-    for (unsigned i = 0; i < g_native_override_count; i++)
+    if (g_native_override_count > sizeof g_ov_addr / sizeof g_ov_addr[0])
+        fatal("too many native overrides");
+    for (unsigned i = 0; i < g_native_override_count; i++) {
+        g_ov_addr[i] = rg(g_native_overrides[i].addr);
         if (!strcasecmp(g_native_overrides[i].module, m->name)) {
-            uint32_t w = (g_native_overrides[i].addr & 0x1FFFFFu) >> 2;
+            uint32_t w = (g_ov_addr[i] & 0x1FFFFFu) >> 2;
             g_ov_bits[w >> 3] |= (uint8_t)(1u << (w & 7));
         }
+    }
 }
 
 RecompFunc native_lookup(uint32_t addr) {
@@ -159,7 +168,7 @@ RecompFunc native_lookup(uint32_t addr) {
         return NULL;
     uint32_t a = 0x80000000u | p;
     for (unsigned i = 0; i < g_native_override_count; i++)
-        if (g_native_overrides[i].addr == a && !strcasecmp(g_native_overrides[i].module, g_mod->name))
+        if (g_ov_addr[i] == a && !strcasecmp(g_native_overrides[i].module, g_mod->name))
             return g_native_overrides[i].fn;
     return NULL;
 }

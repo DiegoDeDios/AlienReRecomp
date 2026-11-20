@@ -474,7 +474,7 @@ void draw_main(ImDrawList *dl) {
     dl->AddCircleFilled(ImVec2(mx + 5 * L.U, fy + fs * 0.5f), 4.5f * L.U, dc);
     char line[400];
     snprintf(line, sizeof line, "%s", L.disc == DISC_NONE
-                                          ? "No disc image selected - choose your Alien Resurrection (USA) .cue file."
+                                          ? "No disc image selected - choose your Alien Resurrection .cue file (USA or Europe)."
                                           : L.disc_msg);
     dl->AddText(L.f_body, fs, ImVec2(mx + 18 * L.U, fy), ok ? C_TEXT : dc, line);
     if (ok) {

@@ -35,8 +35,8 @@ static void vsync_wait(CPU *c, uint32_t vcount_addr) {
     }
 }
 
-void ALIEN_80082C4C(CPU *c) { vsync_wait(c, 0x8009D240u); }
-void SLUS_800163D4(CPU *c) { vsync_wait(c, 0x8001F6C8u); }
+void ALIEN_80082C4C(CPU *c) { vsync_wait(c, rg(0x8009D240u)); }
+void SLUS_800163D4(CPU *c) { vsync_wait(c, rg(0x8001F6C8u)); }
 
 /* Adaptive CPU budget. The emulated CPU gets a fixed number of instructions per
  * refresh (g_cycle_scale, the Frame rate boost setting), and a frame that uses
@@ -46,7 +46,7 @@ void SLUS_800163D4(CPU *c) { vsync_wait(c, 0x8001F6C8u); }
  * rising at once and falling slowly, never below the player's setting. A host
  * too slow for a boosted frame caps the boost, or it would run in slow motion.
  * Attract demos do not make this call and keep the setting. */
-#define FRAME_WAIT_RA      0x0001FC6Cu
+#define FRAME_WAIT_RA      rg(0x0001FC6Cu)
 #define MIN_CYCLE_SCALE    4           /* 800%, the highest setting */
 #define NO_BOOST_SCALE     32          /* 100%, the original hardware */
 #define STEP_DOWN_FRAMES   60
@@ -128,7 +128,7 @@ void ALIEN_80030E68(CPU *c) {
 /* return address (physical: the interpreter runs the game from KUSEG) of
  * the frame routine's VSync(3), its 20 fps cap while a level section loads
  * (flag at 0x800A4A14, see FINDINGS.md) */
-#define SECTION_LOAD_CAP_RA 0x0001FC40u
+#define SECTION_LOAD_CAP_RA rg(0x0001FC40u)
 
 /* libetc VSync(mode): the menus wait in it and gameplay polls it with -1
  * every frame, so its entry is where save states are taken and restored
@@ -177,8 +177,8 @@ void ALIEN_800A81BC(CPU *c) {
  * the ramp takes as long as a normal start and releasing Shift eases back
  * down to walking speed. Only the player, only standing (stance byte
  * obj+0x171 = 0), never during attract-mode demo playback. */
-#define PLAYER_OBJ_PTR 0x800A49E8u /* gp+0x474 */
-#define DEMO_PLAYBACK  0x800A48C4u
+#define PLAYER_OBJ_PTR rg(0x800A49E8u) /* gp+0x474 */
+#define DEMO_PLAYBACK  rg(0x800A48C4u)
 
 bool g_sprint;
 int g_sprint_pct = 190;
@@ -202,8 +202,8 @@ void ALIEN_8005E8E8(CPU *c) {
  * up to the capacity, and an empty flashlight cannot be switched on.
  * Infinite flashlight keeps the battery full around the update, so it never
  * runs down (the HUD shows 100%). Not during attract-mode demo playback. */
-#define INVENTORY_PTR       0x800A49F0u /* gp+0x47C */
-#define FLASHLIGHT_CAPACITY 0x800A7B10u /* 1200 vblanks of light */
+#define INVENTORY_PTR       rg(0x800A49F0u) /* gp+0x47C */
+#define FLASHLIGHT_CAPACITY rg(0x800A7B10u) /* 1200 vblanks of light */
 
 bool g_infinite_flashlight = true;
 
@@ -217,7 +217,7 @@ static void flashlight_fill(void) {
  * game's amount table at 0x800A7A44 also sets starting ammo at level start, so
  * it stays as it is and the difference is added here. Item codes as in
  * FINDINGS.md; a negative count means infinite. */
-#define PICKUP_AMOUNTS 0x800A7A44u
+#define PICKUP_AMOUNTS rg(0x800A7A44u)
 
 static int ammo_pickup_amount(uint32_t code) {
     switch (code) {
@@ -358,15 +358,15 @@ void ALIEN_800519D0(CPU *c) {
  * vblank, with its own dead zone, curve and speed, and adds mouse look
  * converted with the inverse of the rate, so the camera turns by exactly
  * the mouse movement. */
-#define CMD_TURN       0x800BDBE0u
-#define CMD_LOOK       0x800BDBE4u
-#define CMD_LOOK_RATE  0x800BDBF8u
-#define CMD_VARIANT_A  0x800BDC20u /* select the control type's alternate */
-#define CMD_VARIANT_B  0x800BDC28u /* axis mappings */
-#define PAD0_AXES      0x800BDAF0u /* processed: left X, left Y, right X, right Y */
-#define CONTROL_CONFIG 0x800A4704u /* gp+0x190; +0xC8: command slot of each axis */
-#define OPTIONS        0x80096BBCu /* +0x0E invert Y, +0x11/+0x12 turn/look speed */
-#define FRAME_STEP     0x800A86A4u /* gp+0x4130: vblanks since the last frame */
+#define CMD_TURN       rg(0x800BDBE0u)
+#define CMD_LOOK       rg(0x800BDBE4u)
+#define CMD_LOOK_RATE  rg(0x800BDBF8u)
+#define CMD_VARIANT_A  rg(0x800BDC20u) /* select the control type's alternate */
+#define CMD_VARIANT_B  rg(0x800BDC28u) /* axis mappings */
+#define PAD0_AXES      rg(0x800BDAF0u) /* processed: left X, left Y, right X, right Y */
+#define CONTROL_CONFIG rg(0x800A4704u) /* gp+0x190; +0xC8: command slot of each axis */
+#define OPTIONS        rg(0x80096BBCu) /* +0x0E invert Y, +0x11/+0x12 turn/look speed */
+#define FRAME_STEP     rg(0x800A86A4u) /* gp+0x4130: vblanks since the last frame */
 
 float g_cam_mouse_x, g_cam_mouse_y;
 int g_cam_mouse_age;
@@ -504,7 +504,7 @@ void ALIEN_8005ECBC(CPU *c) {
  * original ships with "Invert Y" (byte +0x0E) on; default it to off. A
  * player who prefers inverted look can still turn it on in Control Options
  * and it is restored from their saves. */
-#define OPT_INVERT_Y 0x80096BCAu
+#define OPT_INVERT_Y rg(0x80096BCAu)
 
 void ALIEN_80020350__orig(CPU *c);
 void ALIEN_80020350(CPU *c) {
@@ -525,7 +525,7 @@ void ALIEN_80020350(CPU *c) {
  * The first-person weapon (0x80020848, drawn through 0x80020544) is kept at
  * the original H: the models are built for that framing, and a wider one
  * shows parts that were always off screen. */
-#define CAMERA_H_OFFSET 0x800A476Eu
+#define CAMERA_H_OFFSET rg(0x800A476Eu)
 #define CAMERA_H        384.0
 #define SCREEN_HALF_W   192.0
 #define FOV_PI          3.14159265358979323846
@@ -633,7 +633,7 @@ void ALIEN_80034A50(CPU *c) {
  * for. At a step of 1 only a third of it counts, which gives the height of a step
  * of 2 (worked out from the arc: 33 units for the leaps measured, see FINDINGS.md).
  * Demos replay recorded steps and stay as they are. */
-#define LEAP_MOVE_RA 0x000698A8u
+#define LEAP_MOVE_RA rg(0x000698A8u)
 #define OBJ_VELOCITY 0x44
 #define OBJ_PUSH     0x50
 
@@ -671,7 +671,7 @@ void ALIEN_80050730(CPU *c) {
  * Demos are left alone: a held-back flash changes the use of random numbers. */
 #define LIGHT_MODES_PER_CALL 0xE3u /* bits 0, 1, 5, 6, 7 */
 #define LIGHT_MODES_FLASHING 0xA3u /* bits 0, 1, 5, 7 */
-#define VBLANK_COUNT         0x800A86A8u /* gp+0x4134: counter at this frame */
+#define VBLANK_COUNT         rg(0x800A86A8u) /* gp+0x4134: counter at this frame */
 #define FLASH_MIN_GAP        20
 #define LIGHT_INTENSITY      34
 #define LIGHT_LAST_INTENSITY 36

@@ -46,6 +46,7 @@ extern const ActionInfo g_actions[ACT_COUNT];
 typedef struct Settings {
     char disc[1024];         /* .cue sheet of the player's disc image */
     bool skip_intro;         /* start ALIEN.BIN directly (no logos/FMV) */
+    char language[4];        /* European disc: en fr de it es, "" = the game asks */
     /* video */
     bool widescreen;
     int aspect_w, aspect_h;  /* widescreen aspect, e.g. 16:9 */
