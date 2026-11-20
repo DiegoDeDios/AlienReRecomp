@@ -6,6 +6,8 @@
 #include <stdlib.h>
 
 #include "camera.h"
+#include "camera_contact.h"
+#include "camera_probe.h"
 #include "enemy_damage.h"
 #include "pgxp.h"
 #include "psx.h"
@@ -487,15 +489,22 @@ static void camera_mouse(uint32_t player) {
     }
 }
 
+static uint32_t g_player_camera_scope;
+static const float *g_camera_mouse_sample;
 void ALIEN_8005ECBC__orig(CPU *c);
 void ALIEN_8005ECBC(CPU *c) {
-    uint32_t obj = c->r[4];
-    if (obj && obj == mem_r32(PLAYER_OBJ_PTR) && mem_r32(DEMO_PLAYBACK) == 0) {
-        if (g_stick_direct)
-            camera_stick();
+    uint32_t obj=c->r[4],old_scope=g_player_camera_scope;
+    const float *old_sample=g_camera_mouse_sample;
+    float sample[2]={0};
+    g_player_camera_scope=0;
+    if(obj && obj==mem_r32(PLAYER_OBJ_PTR) && !mem_r32(DEMO_PLAYBACK)) {
+        if(g_stick_direct)camera_stick();
         camera_mouse(obj);
+        sample[0]=g_cam_mouse_x;sample[1]=g_cam_mouse_y;
+        g_camera_mouse_sample=sample;g_player_camera_scope=obj;
     }
     ALIEN_8005ECBC__orig(c);
+    g_player_camera_scope=old_scope;g_camera_mouse_sample=old_sample;
 }
 
 /* main (0x80020350). Option defaults live in the options block at
@@ -719,4 +728,94 @@ void ALIEN_80080FE4(CPU *c) {
     light_update_limited(c);
     if (every_other)
         mem_w32(FRAME_STEP, 1);
+}
+
+void ALIEN_80021954__orig(CPU *c);
+void ALIEN_80021954(CPU *c) {
+    uint32_t out=c->r[4];bool precise=g_pgxp;
+    double x=transform_gpr32(7,c->r[7]),y=transform_gpr32(6,c->r[6]),z=transform_gpr32(5,c->r[5]);
+    ALIEN_80021954__orig(c);
+    if(precise)transform_rotation(out,x,y,z,true);
+}
+
+void ALIEN_800831E4__orig(CPU *c);
+void ALIEN_800831E4(CPU *c) {
+    uint32_t in=c->r[4],out=c->r[5];bool precise=g_pgxp;
+    double x=transform_memory16(in),y=transform_memory16(in+2),z=transform_memory16(in+4);
+    ALIEN_800831E4__orig(c);
+    if(precise)transform_rotation(out,x,y,z,false);
+}
+
+/* The integer view/aim builder still owns gameplay. Retain only this input
+ * sample's fractional angle in its render shadow, before matrix construction. */
+void ALIEN_8006215C__orig(CPU *c);
+void ALIEN_8006215C(CPU *c) {
+    if(g_pgxp && g_player_camera_scope && g_camera_mouse_sample) {
+        double pitch=(int32_t)c->r[5];
+        double residual=g_camera_mouse_sample[1]*(mem_r8(OPTIONS+0x0E)?-1.0:1.0);
+        if((pitch>=600 && residual>0) || (pitch<=-600 && residual<0))residual=0;
+        transform_gpr_set(4,(int32_t)c->r[4]-g_camera_mouse_sample[0],c->r[4]);
+        transform_gpr_set(5,pitch+residual,c->r[5]);
+    }
+    ALIEN_8006215C__orig(c);
+}
+
+void ALIEN_80082EA4__orig(CPU *c);
+void ALIEN_80082EA4(CPU *c) {
+    uint32_t in=c->r[4],out=c->r[5];bool precise=g_pgxp;
+    double vector[3],result[3]={0};
+    if(precise) {
+        for(int j=0;j<3;j++)vector[j]=transform_memory32(in+4*j);
+        for(int i=0;i<3;i++)for(int j=0;j<3;j++) {
+            int n=i*3+j;
+            result[i]+=transform_ctrl(n/2,n&1,c->gte.ctrl[n/2])*vector[j]/4096.0;
+        }
+    }
+    ALIEN_80082EA4__orig(c);
+    if(precise)for(int i=0;i<3;i++)transform_memory_set32(out+4*i,result[i]);
+}
+
+
+static CameraContacts *camera_contacts;
+void ALIEN_80025C6C__orig(CPU *c);
+void ALIEN_80025C6C(CPU *c) {
+    ALIEN_80025C6C__orig(c);
+    if(camera_contacts && (c->r[31]&0x1fffffffu)==0x26464) {
+        uint32_t p=c->r[2];
+        if(p!=0x1f800068u){camera_contacts->invalid=true;return;}
+        int32_t time=(int32_t)mem_r32(p+32);
+        if(time>=0 && time<4096) {
+            int32_t n[3];for(int i=0;i<3;i++)n[i]=(int16_t)mem_r16(p+40+2*i);
+            camera_contact_add(camera_contacts,n,(int32_t)mem_r32(p+48));
+        }
+    }
+}
+void ALIEN_80026264__orig(CPU *c);
+void ALIEN_80026264(CPU *c) {
+    uint32_t out=c->r[4],delta=c->r[6];
+    bool camera=g_pgxp && g_player_camera_scope &&
+        (c->r[31]&0x1fffffffu)==0x62410 && c->r[5]==1 && c->r[7]==1;
+    double precise[3],clipped[3];bool tracked=false;
+    CameraContacts *old=camera_contacts,contacts={0};
+    if(camera) {
+        double start[3],movement[3];uint32_t result[3];
+        for(int i=0;i<3;i++) {
+            start[i]=transform_memory32(out+4*i);movement[i]=transform_memory32(delta+4*i);
+            precise[i]=start[i]+movement[i];
+        }
+        /* Contact selection must see the precise endpoint too. Reusing the
+         * raw query's hit/miss would alternate between a clipped point and
+         * a precise endpoint on the other side of the ceiling. */
+        camera_contacts=&contacts;
+        if(camera_probe_run(c,out,delta,start,movement,ALIEN_80026264__orig,result)) {
+            bool free=true;
+            for(int i=0;i<3;i++)free&=result[i]==(uint32_t)(int32_t)llround(start[i])+(uint32_t)(int32_t)llround(movement[i]);
+            if(free){memcpy(clipped,precise,sizeof clipped);tracked=true;}
+            else tracked=camera_contact_clip(&contacts,start,precise,clipped);
+        }
+    }
+    camera_contacts=NULL;
+    ALIEN_80026264__orig(c);
+    camera_contacts=old;
+    if(tracked)for(int i=0;i<3;i++)transform_memory_set32(out+4*i,clipped[i]);
 }
