@@ -82,10 +82,14 @@ static bool rounded_position(uint32_t pc) {
            pc==0x23654 || pc==0x23664 || pc==0x23674 || pc==0x239cc;
 }
 static bool root_position_unround(uint32_t pc) {
-    pc &= 0x1fffffff;
-    return pc==0x22514 || pc==0x2253c || pc==0x2254c;
+    pc&=0x1fffffff;
+    return pc==0x21e40 || pc==0x21e4c || pc==0x21e68 ||
+           pc==0x22514 || pc==0x2253c || pc==0x2254c;
 }
-static bool camera_origin_fixed(uint32_t pc) { return false; }
+static bool camera_origin_fixed(uint32_t pc) {
+    pc&=0x1fffffff;
+    return pc==0x22224 || pc==0x2223c || pc==0x22240;
+}
 static TransformWord checked(TransformWord t,uint32_t raw) {
     return t.valid && t.raw==raw?t:transform_integer(raw);
 }
