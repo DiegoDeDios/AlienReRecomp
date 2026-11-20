@@ -18,3 +18,6 @@
 800343fc wrap  # motion tracker: same
 80034a50 wrap  # crosshair: keep it on its projected point in widescreen
 80020848 wrap  # first-person weapon pass (keeps the original projection)
+
+80026264 wrap  # identify the grounded player's floor-snap sweep
+80024a20 wrap  # lift against walkable support without tangential snap drift

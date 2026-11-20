@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "camera.h"
+#include "slope_contact.h"
 #include "enemy_damage.h"
 #include "pgxp.h"
 #include "psx.h"
@@ -719,4 +720,34 @@ void ALIEN_80080FE4(CPU *c) {
     light_update_limited(c);
     if (every_other)
         mem_w32(FRAME_STEP, 1);
+}
+
+static bool player_floor_snap;
+void ALIEN_80026264__orig(CPU *c);
+void ALIEN_80026264(CPU *c) {
+    bool previous=player_floor_snap;
+    uint32_t player=mem_r32(0x800a49e8u)&0x1fffffffu;
+    player_floor_snap=(c->r[31]&0x1fffffffu)==0x60348 &&
+        player && player+376<sizeof g_ram && c->r[5]>=1 && c->r[5]<=2 &&
+        (mem_r32(c->r[29]+124)&4) && mem_r8(player+369)<=1 &&
+        (int32_t)mem_r32(player+72)==-32768;
+    ALIEN_80026264__orig(c);
+    player_floor_snap=previous;
+}
+
+void ALIEN_80024A20__orig(CPU *c);
+void ALIEN_80024A20(CPU *c) {
+    uint32_t out=c->r[6];int32_t result[3];bool corrected=false;
+    if(player_floor_snap) {
+        int32_t start[3],movement[3],normal[3];
+        for(int i=0;i<3;i++) {
+            start[i]=(int32_t)mem_r32(c->r[4]+4*i);
+            movement[i]=(int32_t)mem_r32(c->r[5]+4*i);
+            normal[i]=(int32_t)mem_r32(c->r[7]+4*i);
+        }
+        corrected=slope_contact_step(start,movement,normal,
+            (int32_t)mem_r32(c->r[7]+12),result);
+    }
+    ALIEN_80024A20__orig(c);
+    if(corrected)for(int i=0;i<3;i++)mem_w32(out+4*i,(uint32_t)result[i]);
 }
