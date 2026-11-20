@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "camera.h"
+#include "sector_rebase.h"
 #include "enemy_damage.h"
 #include "pgxp.h"
 #include "psx.h"
@@ -719,4 +720,10 @@ void ALIEN_80080FE4(CPU *c) {
     light_update_limited(c);
     if (every_other)
         mem_w32(FRAME_STEP, 1);
+}
+
+void ALIEN_80075850__orig(CPU *c);
+void ALIEN_80075850(CPU *c) {
+    if((c->r[31]&0x1fffffff)==0x75cfc)sector_rebase_align(c->r[4]);
+    ALIEN_80075850__orig(c);
 }
