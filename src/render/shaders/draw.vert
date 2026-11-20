@@ -14,7 +14,9 @@ layout(set = 1, binding = 0) uniform VUni { vec2 vram_size; vec2 pad; } u;
 
 void main() {
     vec2 n = in_pos / u.vram_size * 2.0 - 1.0;
-    gl_Position = vec4(n.x * in_w, -n.y * in_w, 0.0, in_w);
+    // Reversed world depth = 0.5 / camera depth; no far clip plane.
+    float z=in_info.w==0u?0.0:(1.0/128.0);
+    gl_Position = vec4(n.x * in_w, -n.y * in_w, z, in_w);
     v_col = in_col;
     v_uv = in_uv;
     v_info = in_info;
