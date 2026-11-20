@@ -21,13 +21,6 @@ typedef enum { REGION_USA, REGION_EUROPE } GameRegion;
 
 extern GameRegion g_region;
 
-/* Play the European release as a 60 Hz (NTSC) game, the way the USA one
- * runs: on by default. The European ALIEN.BIN supports both video modes
- * from a variable that is always PAL on that disc; in PAL mode it draws a
- * 256-line picture and scales its clock by 60/50 to make up for the 50 Hz
- * refresh. The port refreshes at 60 Hz, so PAL mode would run 20% fast. */
-extern bool g_eu_ntsc;
-
 /* European disc language, the game's code: 0 English, 1 French, 2 German,
  * 3 Italian, 4 Spanish; -1 = let the game ask (its language screen after
  * the intro, or the language of the save on the memory card). */
@@ -36,9 +29,10 @@ extern int g_eu_language;
 /* "en", "fr", "de", "it", "es" -> the code above, otherwise -1 */
 int region_language_code(const char *id);
 
-/* Identify the release from SYSTEM.CNF of the open disc. Returns false
- * (and a message) when it is neither. */
-bool region_detect(char *msg, size_t msg_n);
+/* Identify the release from the text of the disc's SYSTEM.CNF (read by
+ * disc_check, platform/discinfo.c) and set g_region. Returns false when it
+ * is neither. */
+bool region_from_cnf(const char *cnf);
 
 /* executable the disc boots (SYSTEM.CNF BOOT), e.g. "SLUS_006.33" */
 const char *region_boot_exe(void);

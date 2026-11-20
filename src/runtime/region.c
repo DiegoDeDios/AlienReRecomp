@@ -21,11 +21,9 @@
 
 #include <string.h>
 
-#include "iso.h"
 #include "psx.h"
 
 GameRegion g_region = REGION_USA;
-bool g_eu_ntsc = true;
 
 typedef struct {
     uint32_t usa, eu;
@@ -83,7 +81,11 @@ static const AddrPair k_eu[] = {
     {0x800BDC28u, 0x800BDDDCu}, /* command block: control variant B */
 };
 
-/* European video mode variables (0 NTSC, 1 PAL; 1 on the disc) */
+/* European video mode variables (0 NTSC, 1 PAL; 1 on the disc). The port
+ * plays the European release at 60 Hz (NTSC), the way the USA one runs: in
+ * PAL mode ALIEN.BIN draws a 256-line picture and scales its clock by 60/50
+ * to make up for the 50 Hz refresh, and the port refreshes at 60 Hz, so PAL
+ * mode would run 20% fast. Both are set to NTSC when their program loads. */
 #define EU_ALIEN_VIDEO_MODE 0x800A4A30u /* ALIEN.BIN, read in 61 places */
 #define EU_BOOT_VIDEO_MODE  0x80022C0Cu /* SLES_029.13 gp+4, SetVideoMode() */
 
@@ -146,35 +148,12 @@ static const char *const k_name[] = {"Alien Resurrection (USA) - SLUS-00633",
 const char *region_boot_exe(void) { return k_boot[g_region]; }
 const char *region_name(void) { return k_name[g_region]; }
 
-bool region_detect(char *msg, size_t msg_n) {
-    uint32_t lba, size;
-    char cnf[2048 + 1];
-    if (!iso_find("SYSTEM.CNF", &lba, &size) || size > 2048 || !iso_read(lba, (uint8_t *)cnf, size)) {
-        snprintf(msg, msg_n, "This is not a PlayStation game disc.");
-        return false;
-    }
-    cnf[size] = 0;
+bool region_from_cnf(const char *cnf) {
     for (int r = REGION_USA; r <= REGION_EUROPE; r++)
         if (strstr(cnf, k_boot[r])) {
             g_region = (GameRegion)r;
-            snprintf(msg, msg_n, "%s", k_name[r]);
             return true;
         }
-    char boot[64] = "?";
-    const char *b = strstr(cnf, "cdrom:");
-    if (b) {
-        b += 6;
-        while (*b == '\\')
-            b++;
-        size_t i = 0;
-        while (b[i] && b[i] != ';' && b[i] != '\r' && b[i] != '\n' && i < sizeof boot - 1)
-            boot[i] = b[i], i++;
-        boot[i] = 0;
-    }
-    snprintf(msg, msg_n,
-             "Unsupported disc (%s). This port needs Alien Resurrection, USA (SLUS-00633) "
-             "or Europe (SLES-02913).",
-             boot);
     return false;
 }
 
@@ -185,7 +164,7 @@ void region_exe_loaded(const char *exe) {
     bool game = !strcasecmp(exe, "ALIEN.BIN");
 
     uint32_t var = game ? EU_ALIEN_VIDEO_MODE : boot ? EU_BOOT_VIDEO_MODE : 0;
-    if (g_eu_ntsc && var && mem_r8(var) == 1) {
+    if (var && mem_r8(var) == 1) {
         mem_w8(var, 0);
         LOGI("region", "%s: video mode set to NTSC (60 Hz)", exe);
     }

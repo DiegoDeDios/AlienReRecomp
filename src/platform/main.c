@@ -1438,15 +1438,16 @@ int main(int argc, char **argv) {
     }
     apply_settings(&g_cfg);
     char cue[1024] = "";
-    if (!g_cfg.disc[0] || !disc_resolve(g_cfg.disc, cue, sizeof cue) || !disc_open(cue)) {
-        fprintf(stderr, "Disc image not found%s%s. Choose it in the launcher, or pass it with --disc:\n"
-                        "  alien --disc \"/path/to/Alien Resurrection (USA).cue\"\n",
-                g_cfg.disc[0] ? ": " : "", g_cfg.disc);
-        return 1;
-    }
     {
         char what[160];
-        if (!region_detect(what, sizeof what)) {
+        DiscStatus ds = disc_check(g_cfg.disc, cue, sizeof cue, what, sizeof what);
+        if (ds == DISC_NONE || ds == DISC_NOT_FOUND) {
+            fprintf(stderr, "Disc image not found%s%s. Choose it in the launcher, or pass it with --disc:\n"
+                            "  alien --disc \"/path/to/Alien Resurrection (USA).cue\"\n",
+                    g_cfg.disc[0] ? ": " : "", g_cfg.disc);
+            return 1;
+        }
+        if (ds != DISC_OK) {
             fprintf(stderr, "%s\n", what);
             LOGE("main", "%s", what);
             return 1;
