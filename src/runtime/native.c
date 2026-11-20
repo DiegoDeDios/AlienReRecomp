@@ -558,7 +558,9 @@ void ALIEN_80020848(CPU *c) {
     uint32_t h = gte_read_ctrl(c, 26);
     if (off)
         gte_write_ctrl(c, 26, (uint32_t)((int32_t)h - off));
+    bool previous=g_pgxp_weapon;g_pgxp_weapon=true;
     ALIEN_80020848__orig(c);
+    g_pgxp_weapon=previous;
     if (off)
         gte_write_ctrl(c, 26, h);
 }

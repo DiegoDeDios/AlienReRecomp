@@ -1,8 +1,10 @@
 #include "pgxp.h"
+#include <math.h>
 
 #include "psx.h"
 
 bool g_pgxp;
+bool g_pgxp_weapon;
 
 static PgxpVtx g_gte[3];          /* SXY0..SXY2 */
 static PgxpVtx g_gpr[32];
@@ -19,17 +21,17 @@ static inline PgxpVtx *mem_slot(uint32_t a) {
 }
 
 void pgxp_reset(void) {
-    /* w = 0 marks an entry as unknown */
+    /* Explicit validity preserves points at z=0 until clipping. */
     memset(g_gte, 0, sizeof g_gte);
     memset(g_gpr, 0, sizeof g_gpr);
     memset(g_ram_sh, 0, sizeof g_ram_sh);
     memset(g_spad_sh, 0, sizeof g_spad_sh);
 }
 
-void pgxp_gte_push(float x, float y, float w, uint32_t raw) {
+void pgxp_gte_push(double x, double y, double w, uint32_t raw, bool valid) {
     g_gte[0] = g_gte[1];
     g_gte[1] = g_gte[2];
-    g_gte[2] = (PgxpVtx){x, y, w, raw};
+    g_gte[2] = (PgxpVtx){.x=x,.y=y,.w=w,.valid=valid && isfinite(x) && isfinite(y) && isfinite(w),.raw=raw,.space=g_pgxp_weapon?2:1};
 }
 
 void pgxp_gte_set(int reg, const PgxpVtx *v) {
@@ -56,7 +58,7 @@ int64_t pgxp_nclip(int64_t n, const uint32_t sxy[3]) {
     bool clamped = false;
     for (int i = 0; i < 3; i++) {
         float sx, sy;
-        if (v[i].raw != sxy[i] || v[i].w == 0.0f)
+        if (v[i].raw != sxy[i] || !v[i].valid)
             return n;
         if (!pgxp_screen(&v[i], &sx, &sy) || sx < -1024.0f || sx > 1023.0f ||
             sy < -1024.0f || sy > 1023.0f)
@@ -79,7 +81,7 @@ bool pgxp_lookup(uint32_t addr, uint32_t word, PgxpVtx *out) {
     if (!addr)
         return false;
     PgxpVtx *s = mem_slot(addr);
-    if (!s || s->raw != word || s->w == 0.0f)
+    if (!s || s->raw != word || !s->valid)
         return false;
     *out = *s;
     return true;
@@ -109,7 +111,7 @@ void pgxp_swc2(uint32_t addr, int rd) {
 
 void pgxp_lwc2(int rd, uint32_t addr) {
     PgxpVtx *s = mem_slot(addr);
-    PgxpVtx v = s ? *s : (PgxpVtx){0, 0, 0, 0};
+    PgxpVtx v = s ? *s : (PgxpVtx){0};
     uint32_t cur = mem_r32(addr);
     if (v.raw != cur)
         v.raw = ~cur;
@@ -120,8 +122,7 @@ void pgxp_lw(int rt, uint32_t addr) {
     if (rt == 0)
         return;
     PgxpVtx *s = mem_slot(addr);
-    if (s)
-        g_gpr[rt] = *s;
+    g_gpr[rt] = s ? *s : (PgxpVtx){0};
 }
 
 void pgxp_sw(uint32_t addr, int rt) {

@@ -244,6 +244,7 @@ static void draw_polygon(const uint32_t *w) {
             if (pgxp_lookup(g_fifo_addr[i], w[i], &p)) {
                 float ox = (float)S.off_x, oy = (float)S.off_y, sx, sy;
                 v[k].tracked = true;
+                v[k].space=p.space;
                 v[k].hx = p.x + ox * p.w;
                 v[k].hy = p.y + oy * p.w;
                 v[k].hw = p.w;
@@ -734,6 +735,63 @@ void gpu_display_info(DisplayInfo *d) {
 
 /* save states: VRAM (read back from the renderer first), the drawing and
  * display state and any half-received command or transfer */
+/* Preserve the v1 save wire layout independently from host precision. */
+typedef struct GpuVertexState {
+    int32_t x, y;
+    uint8_t r, g, b;
+    uint8_t u, v;
+    /* PGXP: precise position (VRAM coordinates, drawing offset applied)
+     * and depth, when the vertex is a tracked GTE projection in front of
+     * the camera */
+    bool precise;
+    float fx, fy, fz;
+    /* PGXP: any tracked GTE projection, also at or behind the camera:
+     * homogeneous VRAM position (hx / hw, hy / hw), hw = depth */
+    bool tracked;
+    float hx, hy, hw;
+} GpuVertexState;
+
+_Static_assert(sizeof(GpuVertexState)==44,"v1 GPU vertex save layout");
+static void gpu_vertex_state(StateIO *s,GVtx *vertex) {
+    GpuVertexState line={0};
+    if(!s->loading) {
+        line.x=vertex->x;
+        line.y=vertex->y;
+        line.r=vertex->r;
+        line.g=vertex->g;
+        line.b=vertex->b;
+        line.u=vertex->u;
+        line.v=vertex->v;
+        line.precise=vertex->precise;
+        line.fx=vertex->fx;
+        line.fy=vertex->fy;
+        line.fz=vertex->fz;
+        line.tracked=vertex->tracked;
+        line.hx=vertex->hx;
+        line.hy=vertex->hy;
+        line.hw=vertex->hw;
+    }
+    STATE(s,line);
+    if(s->loading && !s->error) {
+        vertex->x=line.x;
+        vertex->y=line.y;
+        vertex->r=line.r;
+        vertex->g=line.g;
+        vertex->b=line.b;
+        vertex->u=line.u;
+        vertex->v=line.v;
+        vertex->precise=line.precise;
+        vertex->fx=line.fx;
+        vertex->fy=line.fy;
+        vertex->fz=line.fz;
+        vertex->tracked=line.tracked;
+        vertex->space=0; /* Legacy pending lines have no projection-domain tag. */
+        vertex->hx=line.hx;
+        vertex->hy=line.hy;
+        vertex->hw=line.hw;
+    }
+}
+
 void gpu_state(StateIO *s) {
     state_section(s, "GPU ");
     if (!s->loading && g_gpu_backend->vram_sync)
@@ -750,11 +808,11 @@ void gpu_state(StateIO *s) {
     STATE(s, g_wr);
     STATE(s, g_rd);
     state_heap(s, (void **)&g_wr_buf, &g_wr_count, &g_wr_cap, sizeof *g_wr_buf);
-    STATE(s, g_line_last);
+    gpu_vertex_state(s,&g_line_last);
     STATE(s, g_line_flags);
     STATE(s, g_line_shaded);
     STATE(s, g_line_have_color);
-    STATE(s, g_line_pending_color);
+    gpu_vertex_state(s,&g_line_pending_color);
     STATE(s, g_ot_slot);
     STATE(s, g_ot_lo);
     STATE(s, g_ot_hi);

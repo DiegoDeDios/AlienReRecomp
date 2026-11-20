@@ -18,9 +18,10 @@
 typedef struct PgxpVtx {
     /* homogeneous screen position: the vertex projects to (x / w, y / w),
      * the space of SXY. w is the view depth; it is <= 0 at or behind the
-     * camera, where the GTE's own result is clamped garbage. w = 0 marks
-     * an unknown entry. */
-    float x, y, w;
+     * camera, where the GTE's own result is clamped garbage. valid distinguishes an unknown entry from a point exactly on the eye plane. */
+    double x, y, w;
+    bool valid;
+    uint8_t space; /* 1 world/model, 2 independent first-person lens */
     uint32_t raw;  /* the packed SXY value this entry describes */
 } PgxpVtx;
 
@@ -29,6 +30,7 @@ typedef struct PgxpVtx {
 #define PGXP_NEAR 1.0f
 
 extern bool g_pgxp;
+extern bool g_pgxp_weapon;
 
 /* Forget all shadow values. Needed when tracking is switched back on while
  * the game runs: entries left from before could still match the raw value
@@ -36,7 +38,7 @@ extern bool g_pgxp;
 void pgxp_reset(void);
 
 /* GTE side */
-void pgxp_gte_push(float x, float y, float w, uint32_t raw);
+void pgxp_gte_push(double x, double y, double w, uint32_t raw, bool valid);
 void pgxp_gte_set(int reg, const PgxpVtx *v);
 /* NCLIP of SXY0..SXY2 with the integer result `n`, corrected (see pgxp.c) */
 int64_t pgxp_nclip(int64_t n, const uint32_t sxy[3]);
@@ -48,7 +50,7 @@ bool pgxp_lookup(uint32_t addr, uint32_t word, PgxpVtx *out);
 /* screen position of a tracked projection, if it is in front of the camera
  * and not absurdly far off-screen */
 static inline bool pgxp_screen(const PgxpVtx *v, float *x, float *y) {
-    if (!(v->w >= PGXP_NEAR))
+    if (!v->valid || !(v->w >= PGXP_NEAR))
         return false;
     float sx = v->x / v->w, sy = v->y / v->w;
     if (!(sx > -8192.0f && sx < 8192.0f && sy > -8192.0f && sy < 8192.0f))

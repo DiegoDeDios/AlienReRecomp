@@ -40,7 +40,8 @@ typedef struct GVtx {
     /* PGXP: any tracked GTE projection, also at or behind the camera:
      * homogeneous VRAM position (hx / hw, hy / hw), hw = depth */
     bool tracked;
-    float hx, hy, hw;
+    uint8_t space;
+    double hx, hy, hw;
 } GVtx;
 
 enum {
