@@ -4,6 +4,7 @@
 #include "psx.h"
 
 bool g_pgxp;
+bool g_pgxp_weapon;
 
 static PgxpVtx g_gte[3];          /* SXY0..SXY2 */
 static PgxpVtx g_gpr[32];
@@ -30,7 +31,7 @@ void pgxp_reset(void) {
 void pgxp_gte_push(double x, double y, double w, uint32_t raw, bool valid) {
     g_gte[0] = g_gte[1];
     g_gte[1] = g_gte[2];
-    g_gte[2] = (PgxpVtx){.x=x,.y=y,.w=w,.valid=valid && isfinite(x) && isfinite(y) && isfinite(w),.raw=raw};
+    g_gte[2] = (PgxpVtx){.x=x,.y=y,.w=w,.valid=valid && isfinite(x) && isfinite(y) && isfinite(w),.raw=raw,.space=g_pgxp_weapon?2:1};
 }
 
 void pgxp_gte_set(int reg, const PgxpVtx *v) {

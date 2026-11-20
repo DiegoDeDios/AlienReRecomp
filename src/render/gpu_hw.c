@@ -619,7 +619,7 @@ static void hw_triangle_clipped(const GpuState *s, const GVtx v[3],
             o->info[0] = info0;
             o->info[1] = clut;
             o->info[2] = tw;
-            o->info[3] = 1;
+            o->info[3] = v[0].space==1 && v[1].space==1 && v[2].space==1;
         }
     }
     emit(hv, m, flags, tpage, s);

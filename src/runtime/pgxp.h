@@ -21,6 +21,7 @@ typedef struct PgxpVtx {
      * camera, where the GTE's own result is clamped garbage. valid distinguishes an unknown entry from a point exactly on the eye plane. */
     double x, y, w;
     bool valid;
+    uint8_t space; /* 1 world/model, 2 independent first-person lens */
     uint32_t raw;  /* the packed SXY value this entry describes */
 } PgxpVtx;
 
@@ -29,6 +30,7 @@ typedef struct PgxpVtx {
 #define PGXP_NEAR 1.0f
 
 extern bool g_pgxp;
+extern bool g_pgxp_weapon;
 
 /* Forget all shadow values. Needed when tracking is switched back on while
  * the game runs: entries left from before could still match the raw value

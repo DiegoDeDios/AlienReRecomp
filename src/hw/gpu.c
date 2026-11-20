@@ -244,6 +244,7 @@ static void draw_polygon(const uint32_t *w) {
             if (pgxp_lookup(g_fifo_addr[i], w[i], &p)) {
                 float ox = (float)S.off_x, oy = (float)S.off_y, sx, sy;
                 v[k].tracked = true;
+                v[k].space=p.space;
                 v[k].hx = p.x + ox * p.w;
                 v[k].hy = p.y + oy * p.w;
                 v[k].hw = p.w;
@@ -784,6 +785,7 @@ static void gpu_vertex_state(StateIO *s,GVtx *vertex) {
         vertex->fy=line.fy;
         vertex->fz=line.fz;
         vertex->tracked=line.tracked;
+        vertex->space=0; /* Legacy pending lines have no projection-domain tag. */
         vertex->hx=line.hx;
         vertex->hy=line.hy;
         vertex->hw=line.hw;

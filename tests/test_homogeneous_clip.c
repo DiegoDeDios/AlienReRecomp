@@ -32,6 +32,9 @@ int main(void) {
         pgxp_mfc2(2,14);g_cpu->r[2]=123;pgxp_lw(2,0x1f801000);
         mem_w32(0x104,123);pgxp_sw(0x104,2);assert(!pgxp_lookup(0x104,123,&p));
     }
+    g_pgxp_weapon=true;pgxp_gte_push(1,1,100,123,true);pgxp_swc2(0x100,14);
+    PgxpVtx weapon;assert(pgxp_lookup(0x100,123,&weapon) && weapon.space==2);
+    g_pgxp_weapon=false;
     pgxp_gte_push(INFINITY,0,1,123,true);pgxp_swc2(0x100,14);PgxpVtx p;assert(!pgxp_lookup(0x100,123,&p));
     puts("Homogeneous clipping: 50000 triangles, eye-plane validity, shared edges, finite viewport bounds and stale checks passed.");return 0;
 }
