@@ -720,3 +720,28 @@ void ALIEN_80080FE4(CPU *c) {
     if (every_other)
         mem_w32(FRAME_STEP, 1);
 }
+
+/* A recorded demo tick may represent several vblanks. Overclocking the CPU
+ * must not consume those recorded ticks once per host frame. Wait for the
+ * recorded duration at the normal display boundary, keeping audio, video and
+ * guest interrupts running and leaving the recorded inputs/steps intact. */
+void ALIEN_8001FB04__orig(CPU *c);
+static uint64_t demo_previous;
+static bool demo_running;
+void ALIEN_8001FB04(CPU *c) {
+    bool demo=mem_r32(DEMO_PLAYBACK)!=0;
+    if((c->r[31]&0x1FFFFFFFu)==0x0001FCB0u) {
+        if(demo && demo_running) {
+            uint32_t step=mem_r32(FRAME_STEP);
+            if(step<1) step=1;
+            if(step>8) step=8;
+            uint64_t target=demo_previous+step;
+            while(g_gpu_frame_counter<target) {
+                if(c->next_event>c->cycles) c->cycles=c->next_event;
+                cpu_service_events(c);
+            }
+        }
+        demo_previous=g_gpu_frame_counter;demo_running=demo;
+    }
+    ALIEN_8001FB04__orig(c);
+}
