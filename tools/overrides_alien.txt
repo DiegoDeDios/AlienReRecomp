@@ -23,3 +23,6 @@
 800831e4 wrap  # rotation matrix: analytical fractional render shadow
 8006215c wrap  # player view/aim boundary: retain the current input fraction
 80082ea4 wrap  # fixed-point vector rotation: retain fractional render translation
+
+80025c6c wrap  # capture the contact planes selected by the player's view sweep
+80026264 wrap  # reconcile precise camera endpoint against native contacts

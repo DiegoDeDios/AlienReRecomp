@@ -6,6 +6,8 @@
 #include <stdlib.h>
 
 #include "camera.h"
+#include "camera_contact.h"
+#include "camera_probe.h"
 #include "enemy_damage.h"
 #include "pgxp.h"
 #include "psx.h"
@@ -771,4 +773,49 @@ void ALIEN_80082EA4(CPU *c) {
     }
     ALIEN_80082EA4__orig(c);
     if(precise)for(int i=0;i<3;i++)transform_memory_set32(out+4*i,result[i]);
+}
+
+
+static CameraContacts *camera_contacts;
+void ALIEN_80025C6C__orig(CPU *c);
+void ALIEN_80025C6C(CPU *c) {
+    ALIEN_80025C6C__orig(c);
+    if(camera_contacts && (c->r[31]&0x1fffffffu)==0x26464) {
+        uint32_t p=c->r[2];
+        if(p!=0x1f800068u){camera_contacts->invalid=true;return;}
+        int32_t time=(int32_t)mem_r32(p+32);
+        if(time>=0 && time<4096) {
+            int32_t n[3];for(int i=0;i<3;i++)n[i]=(int16_t)mem_r16(p+40+2*i);
+            camera_contact_add(camera_contacts,n,(int32_t)mem_r32(p+48));
+        }
+    }
+}
+void ALIEN_80026264__orig(CPU *c);
+void ALIEN_80026264(CPU *c) {
+    uint32_t out=c->r[4],delta=c->r[6];
+    bool camera=g_pgxp && g_player_camera_scope &&
+        (c->r[31]&0x1fffffffu)==0x62410 && c->r[5]==1 && c->r[7]==1;
+    double precise[3],clipped[3];bool tracked=false;
+    CameraContacts *old=camera_contacts,contacts={0};
+    if(camera) {
+        double start[3],movement[3];uint32_t result[3];
+        for(int i=0;i<3;i++) {
+            start[i]=transform_memory32(out+4*i);movement[i]=transform_memory32(delta+4*i);
+            precise[i]=start[i]+movement[i];
+        }
+        /* Contact selection must see the precise endpoint too. Reusing the
+         * raw query's hit/miss would alternate between a clipped point and
+         * a precise endpoint on the other side of the ceiling. */
+        camera_contacts=&contacts;
+        if(camera_probe_run(c,out,delta,start,movement,ALIEN_80026264__orig,result)) {
+            bool free=true;
+            for(int i=0;i<3;i++)free&=result[i]==(uint32_t)(int32_t)llround(start[i])+(uint32_t)(int32_t)llround(movement[i]);
+            if(free){memcpy(clipped,precise,sizeof clipped);tracked=true;}
+            else tracked=camera_contact_clip(&contacts,start,precise,clipped);
+        }
+    }
+    camera_contacts=NULL;
+    ALIEN_80026264__orig(c);
+    camera_contacts=old;
+    if(tracked)for(int i=0;i<3;i++)transform_memory_set32(out+4*i,clipped[i]);
 }
