@@ -245,3 +245,19 @@ void transform_commit(uint32_t pc,uint32_t w,int reg,uint32_t raw) {
     known|=op==0 && fn==3 && sa==12 && (pc&0x1fffffff)>=0x30a60 && (pc&0x1fffffff)<=0x30a68;
     if(!known || t_gpr[reg].raw!=raw) t_gpr[reg].valid=false;
 }
+
+void transform_rotation(uint32_t out,double x,double y,double z,bool model) {
+    const double k=6.283185307179586476925286766559/4096.0;
+    double sx=sin(x*k),cx=cos(x*k),sy=sin(y*k),cy=cos(y*k),sz=sin(z*k),cz=cos(z*k);
+    double m[9];
+    if(model) {
+        double a[9]={cy*cx,sy*sz-cy*sx*cz,sy*cz+cy*sx*sz,
+                     sx,cx*cz,-cx*sz,-sy*cx,cy*sz+sy*sx*cz,cy*cz-sy*sx*sz};
+        memcpy(m,a,sizeof m);
+    } else {
+        double a[9]={cy*cz+sy*sx*sz,sy*sx*cz-cy*sz,sy*cx,
+                     cx*sz,cx*cz,-sx,cy*sx*sz-sy*cz,sy*sz+cy*sx*cz,cy*cx};
+        memcpy(m,a,sizeof m);
+    }
+    for(int i=0;i<9;i++)transform_memory_set16(out+2*i,m[i]*4096.0);
+}

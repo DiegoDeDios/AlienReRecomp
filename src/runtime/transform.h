@@ -19,3 +19,4 @@ double transform_memory16(uint32_t address);
 double transform_memory32(uint32_t address);
 void transform_memory_set16(uint32_t address,double value);
 void transform_memory_set32(uint32_t address,double value);
+void transform_rotation(uint32_t out,double x,double y,double z,bool model);
