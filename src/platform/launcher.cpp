@@ -686,11 +686,12 @@ bool choice(const char *label, int *idx, const char *const *opts, int n, const c
 }
 
 bool slider(const char *label, float *v, float lo, float hi, float step, const char *fmt,
-            const char *desc) {
+            const char *desc, bool logarithmic = false) {
     Row r = row(label, desc);
     float nv = *v;
-    if (r.left) nv -= step;
-    if (r.right) nv += step;
+    float nav_step = logarithmic ? fmaxf(step, nv * 0.1f) : step;
+    if (r.left) nv -= nav_step;
+    if (r.right) nv += nav_step;
     bool disabled = (GImGui->CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
     const int segs = 20;
     float x0 = value_x(r), seg_w = 11 * L.U, gap = 3 * L.U, bw = segs * (seg_w + gap);
@@ -700,12 +701,15 @@ bool slider(const char *label, float *v, float lo, float hi, float step, const c
         if (mx >= x0 - 8 * L.U && mx <= x0 + bw + 8 * L.U) {
             float t = (mx - x0) / bw;
             t = t < 0 ? 0 : t > 1 ? 1 : t;
-            nv = lo + roundf(t * (hi - lo) / step) * step;
+            nv = logarithmic ? expf(logf(lo) + t * logf(hi / lo)) :
+                              lo + roundf(t * (hi - lo) / step) * step;
         }
     }
+    if (logarithmic && nv != *v) nv = roundf(nv / step) * step;
     nv = nv < lo ? lo : nv > hi ? hi : nv;
     ImDrawList *dl = ImGui::GetWindowDrawList();
-    int lit = (int)lroundf((nv - lo) / (hi - lo) * segs);
+    float ratio = logarithmic ? logf(nv / lo) / logf(hi / lo) : (nv - lo) / (hi - lo);
+    int lit = (int)lroundf(ratio * segs);
     for (int i = 0; i < segs; i++) {
         float sx = x0 + i * (seg_w + gap);
         ImU32 c = i < lit ? (disabled ? C_FAINT : r.hot ? C_ACCENT : C_TEXT)
@@ -1044,8 +1048,8 @@ void draw_controls(ImDrawList *dl) {
                "it."))
         mark(&c->mouse_look);
     ImGui::BeginDisabled(!c->mouse_look);
-    if (slider("Mouse sensitivity", &c->mouse_sens, 1, 20, 0.5f, "%.1f", "How far the view turns per "
-               "mouse movement."))
+    if (slider("Mouse sensitivity", &c->mouse_sens, MOUSE_SENS_MIN, MOUSE_SENS_MAX, 0.01f, "%.2f",
+               "How far the view turns per mouse movement. Fine adjustments support high-DPI mice.", true))
         mark(&c->mouse_sens);
     ImGui::EndDisabled();
 
