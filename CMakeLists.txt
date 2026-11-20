@@ -117,6 +117,21 @@ target_compile_options(alien PRIVATE -Wall -Wextra -Wno-unused-parameter
   -fno-strict-aliasing)
 target_link_libraries(alien PRIVATE game_code imgui SDL3::SDL3 m)
 
+# The interpreted runtime crosses translation units for every guest instruction
+# (PGXP/transform shadows, memory and GTE). Let the Release optimizer see that
+# whole path; otherwise dense connected rooms can miss the audio/frame deadline.
+# No fast-math or guest clock changes. Keep an OFF switch for diagnostics.
+option(PORT_RUNTIME_IPO "Optimize the Release interpreter across source files" ON)
+if(PORT_RUNTIME_IPO)
+  include(CheckIPOSupported)
+  check_ipo_supported(RESULT _port_ipo OUTPUT _port_ipo_error LANGUAGES C CXX)
+  if(_port_ipo)
+    set_property(TARGET alien game_code PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+  else()
+    message(WARNING "Release runtime IPO unavailable: ${_port_ipo_error}")
+  endif()
+endif()
+
 # Port version: PORT_VERSION in src/platform/launcher.h, stamped by CI. A
 # suffix such as "-pre" is left out of the numeric version used here.
 file(STRINGS ${CMAKE_SOURCE_DIR}/src/platform/launcher.h _port_version_line
