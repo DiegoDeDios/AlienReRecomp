@@ -31,6 +31,7 @@
 #include "discinfo.h"
 #include "launcher.h"
 #include "settings.h"
+#include "audio_batch.h"
 
 int png_write_rgb(const char *path, const uint8_t *rgb, int w, int h);
 
@@ -82,6 +83,7 @@ static struct {
 static SDL_Window *g_win;
 static bool g_gpu_ok;
 static SDL_AudioStream *g_audio;
+static AudioBatch audio_batch;
 static SDL_Gamepad *g_pad;
 static uint64_t g_next_frame_ns;
 static uint64_t g_frame_end_ns; /* when the last frame was presented and paced */
@@ -146,6 +148,7 @@ void platform_state_done(bool save, bool ok, const char *message) {
 static float g_mouse_dx, g_mouse_dy;
 
 void platform_state_loaded(void) {
+    audio_batch.frames = 0;
     /* sound queued from before the load, the pacing clock and mouse motion
      * belong to the old moment */
     if (g_audio)
@@ -422,17 +425,24 @@ static void wav_close(void) {
     }
 }
 
+static void audio_submit(const int16_t *stereo, int frames, void *context) {
+    (void)context;
+    /* Retain the existing 150 ms limit, but lock SDL once per batch. */
+    if (SDL_GetAudioStreamQueued(g_audio) > 44100 * 4 * 15 / 100)
+        return;
+    SDL_PutAudioStreamData(g_audio, stereo, frames * 4);
+}
+
 void platform_audio_push(const int16_t *stereo, int frames) {
     if (g_wav) {
         fwrite(stereo, 4, (size_t)frames, g_wav);
         g_wav_frames += (uint32_t)frames;
     }
-    if (!g_audio || g_turbo)
+    if (!g_audio || g_turbo) {
+        audio_batch.frames = 0;
         return;
-    /* keep latency bounded: drop if more than ~150 ms queued */
-    if (SDL_GetAudioStreamQueued(g_audio) > 44100 * 4 * 15 / 100)
-        return;
-    SDL_PutAudioStreamData(g_audio, stereo, frames * 4);
+    }
+    audio_batch_push(&audio_batch, stereo, frames, audio_submit, NULL);
 }
 
 /* Keep the audio queue near a target latency by nudging the playback rate.
