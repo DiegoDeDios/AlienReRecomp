@@ -902,6 +902,9 @@ void draw_settings(ImDrawList *dl) {
         mark(&c->sprint_pct);
     }
     ImGui::EndDisabled();
+    if (toggle("Extra ammo", &c->extra_ammo,
+               "Increase ammunition from pickups. Off retains original pickup amounts and starting ammo."))
+        mark(&c->extra_ammo);
     if (toggle("Infinite flashlight", &c->infinite_flashlight,
                "The flashlight's battery never runs down. In the original it lasts about 20 "
                "seconds and recharges while switched off. Added by this port."))
