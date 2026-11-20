@@ -218,6 +218,7 @@ static void flashlight_fill(void) {
  * it stays as it is and the difference is added here. Item codes as in
  * FINDINGS.md; a negative count means infinite. */
 #define PICKUP_AMOUNTS 0x800A7A44u
+bool g_extra_ammo;
 
 static int ammo_pickup_amount(uint32_t code) {
     switch (code) {
@@ -236,7 +237,7 @@ void ALIEN_800524F0(CPU *c) {
     ALIEN_800524F0__orig(c);
     int amount = ammo_pickup_amount(code);
     int32_t count = (int16_t)c->r[2];
-    if (!amount || count < 0 || mem_r32(DEMO_PLAYBACK))
+    if (!g_extra_ammo || !amount || count < 0 || mem_r32(DEMO_PLAYBACK))
         return;
     count += amount - (int32_t)mem_r32(PICKUP_AMOUNTS + (code + 22) * 4);
     mem_w16(mem_r32(INVENTORY_PTR) + 12 + (code - 48) * 2, (uint16_t)count);

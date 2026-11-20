@@ -235,6 +235,7 @@ void pad_get_sticks(int port, uint8_t *rx, uint8_t *ry, uint8_t *lx, uint8_t *ly
 /* ---- game enhancements (native.c) ---- */
 extern bool g_sprint;      /* sprint input held this frame */
 extern int g_sprint_pct;   /* player movement speed while sprinting, percent */
+extern bool g_extra_ammo;
 extern bool g_infinite_flashlight; /* flashlight battery never runs down */
 /* adaptive CPU budget (native.c): the player's setting and the host's time */
 void cpu_budget_configure(uint32_t scale);

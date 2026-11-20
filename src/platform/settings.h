@@ -61,6 +61,7 @@ typedef struct Settings {
     /* gameplay */
     bool sprint;
     int sprint_pct;
+    bool extra_ammo;          /* rebalance pickup amounts; off by default */
     bool infinite_flashlight;  /* the flashlight battery never runs down */
     bool quick_save;         /* quick save / quick load keys (save states) */
     int cpu_pct;             /* emulated CPU speed (frame rate headroom) */

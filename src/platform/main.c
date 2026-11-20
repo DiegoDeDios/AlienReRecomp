@@ -587,6 +587,8 @@ static void apply_live(void) {
         g_texrep_on = c->hd_textures;
         LOGI("overlay", "HD textures %s", c->hd_textures ? "on" : "off");
     }
+    if (c->extra_ammo != a->extra_ammo)
+        g_extra_ammo = c->extra_ammo;
     if (c->infinite_flashlight != a->infinite_flashlight) {
         g_infinite_flashlight = c->infinite_flashlight;
         LOGI("overlay", "infinite flashlight %s", c->infinite_flashlight ? "on" : "off");
@@ -1351,6 +1353,7 @@ static void apply_settings(const Settings *c) {
     opt.show_fps = c->show_fps;
     opt.mouse_sens = c->mouse_sens;
     g_sprint_pct = c->sprint ? c->sprint_pct : 100;
+    g_extra_ammo = c->extra_ammo;
     g_infinite_flashlight = c->infinite_flashlight;
     g_fov_deg = c->fov;
     cpu_budget_configure(cycle_scale_for(c->cpu_pct));

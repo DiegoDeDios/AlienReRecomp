@@ -331,6 +331,7 @@ bool settings_load(Settings *s, const char *path) {
         } else if (!strcmp(sect, "gameplay")) {
             if (!strcmp(k, "sprint")) s->sprint = parse_bool(v);
             else if (!strcmp(k, "sprint_speed")) s->sprint_pct = clampi(atoi(v), 100, 300);
+            else if (!strcmp(k, "extra_ammo")) s->extra_ammo = parse_bool(v);
             else if (!strcmp(k, "infinite_flashlight")) s->infinite_flashlight = parse_bool(v);
             else if (!strcmp(k, "quick_save")) s->quick_save = parse_bool(v);
             else if (!strcmp(k, "cpu_speed")) s->cpu_pct = clampi(atoi(v), 50, 800);
@@ -396,9 +397,9 @@ bool settings_save(const Settings *s, const char *path) {
             tf[s->pgxp], tf[s->hd_textures], tf[s->vsync], tf[s->smooth], tf[s->fullscreen], tf[s->show_fps],
             s->gpu_driver);
     fprintf(f, "[gameplay]\nsprint = %s\nsprint_speed = %d\ninfinite_flashlight = %s\n"
-               "quick_save = %s\ncpu_speed = %d\n\n",
+               "quick_save = %s\ncpu_speed = %d\nextra_ammo = %s\n\n",
             tf[s->sprint], s->sprint_pct, tf[s->infinite_flashlight], tf[s->quick_save],
-            s->cpu_pct);
+            s->cpu_pct, tf[s->extra_ammo]);
     fprintf(f, "# damage the player takes, percent of the original (all x group)\n"
                "[enemy_damage]\nall = %d\n", s->enemy_damage_pct);
     for (int g = 0; g < DMG_GROUP_COUNT; g++)
