@@ -84,6 +84,7 @@ set(RUNTIME_SRC
   src/runtime/widescreen.c
   src/runtime/automap.c
   src/runtime/native.c
+  src/runtime/camera_walk.c
   src/runtime/camera_contact.c
   src/runtime/camera_probe.c
   src/runtime/pgxp.c

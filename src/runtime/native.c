@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "camera.h"
+#include "camera_walk.h"
 #include "camera_contact.h"
 #include "camera_probe.h"
 #include "enemy_damage.h"
@@ -742,6 +743,7 @@ void ALIEN_800831E4__orig(CPU *c);
 void ALIEN_800831E4(CPU *c) {
     uint32_t in=c->r[4],out=c->r[5];bool precise=g_pgxp;
     double x=transform_memory16(in),y=transform_memory16(in+2),z=transform_memory16(in+4);
+    if(precise && camera_walk_upright(c,g_player_camera_scope))x=z=0;
     ALIEN_800831E4__orig(c);
     if(precise)transform_rotation(out,x,y,z,false);
 }
