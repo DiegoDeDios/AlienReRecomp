@@ -11,6 +11,7 @@
  * same register/memory moves of projected vertices.
  */
 #include "psx.h"
+#include "transform.h"
 #include "savestate.h"
 
 /* When true, jal/jalr targets that have recompiled code are executed
@@ -75,6 +76,7 @@ void interp_run(CPU *c, uint32_t pc, uint32_t stop_ra) {
         bool link = false;
         uint32_t link_reg = 31;
 
+        if (g_pgxp) transform_instruction(pc, w);
         switch (op) {
         case 0x00:
             switch (fn) {
@@ -202,6 +204,8 @@ void interp_run(CPU *c, uint32_t pc, uint32_t stop_ra) {
         /* retire the previous load (unless this instruction overwrote it) */
         if (cur_load.reg && cur_load.reg != (int)wr_reg)
             c->r[cur_load.reg] = cur_load.val;
+        if (wr_reg && g_pgxp)
+            transform_commit(pc, w, wr_reg, wr_val);
         if (wr_reg)
             c->r[wr_reg] = wr_val;
         if (pend.reg == 0)

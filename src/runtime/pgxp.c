@@ -19,6 +19,7 @@ static inline PgxpVtx *mem_slot(uint32_t a) {
 }
 
 void pgxp_reset(void) {
+    transform_reset();
     /* w = 0 marks an entry as unknown */
     memset(g_gte, 0, sizeof g_gte);
     memset(g_gpr, 0, sizeof g_gpr);
@@ -137,4 +138,13 @@ void pgxp_sw(uint32_t addr, int rt) {
 void pgxp_mov(int rd, int rs) {
     if (rd != 0)
         g_gpr[rd] = g_gpr[rs];
+}
+
+void pgxp_registers_save(PgxpRegisters *p) {
+    memcpy(p->gpr,g_gpr,sizeof g_gpr);memcpy(p->gte,g_gte,sizeof g_gte);
+    transform_registers_save(&p->transform);
+}
+void pgxp_registers_restore(const PgxpRegisters *p) {
+    memcpy(g_gpr,p->gpr,sizeof g_gpr);memcpy(g_gte,p->gte,sizeof g_gte);
+    transform_registers_restore(&p->transform);
 }
