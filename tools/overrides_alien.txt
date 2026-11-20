@@ -22,3 +22,4 @@
 80021954 wrap  # model rotation: analytical fractional render shadow
 800831e4 wrap  # rotation matrix: analytical fractional render shadow
 8006215c wrap  # player view/aim boundary: retain the current input fraction
+80082ea4 wrap  # fixed-point vector rotation: retain fractional render translation

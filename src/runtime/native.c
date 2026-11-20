@@ -757,3 +757,18 @@ void ALIEN_8006215C(CPU *c) {
     }
     ALIEN_8006215C__orig(c);
 }
+
+void ALIEN_80082EA4__orig(CPU *c);
+void ALIEN_80082EA4(CPU *c) {
+    uint32_t in=c->r[4],out=c->r[5];bool precise=g_pgxp;
+    double vector[3],result[3]={0};
+    if(precise) {
+        for(int j=0;j<3;j++)vector[j]=transform_memory32(in+4*j);
+        for(int i=0;i<3;i++)for(int j=0;j<3;j++) {
+            int n=i*3+j;
+            result[i]+=transform_ctrl(n/2,n&1,c->gte.ctrl[n/2])*vector[j]/4096.0;
+        }
+    }
+    ALIEN_80082EA4__orig(c);
+    if(precise)for(int i=0;i<3;i++)transform_memory_set32(out+4*i,result[i]);
+}

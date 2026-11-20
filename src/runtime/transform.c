@@ -46,12 +46,45 @@ static bool render_add(uint32_t pc) {
  * integer ADDU used to invalidate the fractional MVMVA result just before
  * CTC2. Recognize only these arithmetic sites and their original opcodes;
  * unrelated guest arithmetic keeps its existing invalidation rules. */
-static bool object_translation(uint32_t pc,uint32_t w) { return false; }
+static bool object_translation(uint32_t pc,uint32_t w) {
+    switch(pc&0x1fffffff) {
+    case 0x22388: return w==0x00431021u;
+    case 0x223a0: return w==0x00641821u;
+    case 0x223a4: return w==0x00451021u;
+    case 0x2269c: return w==0x00431021u;
+    case 0x226b0: return w==0x00621821u;
+    case 0x226c4: return w==0x00431021u;
+    case 0x227cc: return w==0x00431021u;
+    case 0x227e4: return w==0x00621821u;
+    case 0x227fc: return w==0x00431021u;
+    case 0x22b58: return w==0x00431021u;
+    case 0x22b74: return w==0x00621821u;
+    case 0x22b90: return w==0x00431021u;
+    case 0x23050: return w==0x00431021u;
+    case 0x2306c: return w==0x00621821u;
+    case 0x23088: return w==0x00431021u;
+    case 0x23a58: return w==0x00431021u;
+    case 0x23a7c: return w==0x00641821u;
+    case 0x23a80: return w==0x00451021u;
+    case 0x22544: return w==0x00641823u;
+    default: return false;
+    }
+}
 static bool render_arithmetic(uint32_t pc,uint32_t w) {
     return render_add(pc) || object_translation(pc,w);
 }
-static bool rounded_position(uint32_t pc) { return false; }
-static bool root_position_unround(uint32_t pc) { return false; }
+static bool rounded_position(uint32_t pc) {
+    pc&=0x1fffffff;
+    return pc==0x20ebc || pc==0x20ed8 || pc==0x20ef4 ||
+           pc==0x21ba8 || pc==0x21bb8 || pc==0x21bc8 ||
+           pc==0x21c78 || pc==0x21c80 || pc==0x21c9c ||
+           pc==0x2232c || pc==0x2233c || pc==0x2234c ||
+           pc==0x23654 || pc==0x23664 || pc==0x23674 || pc==0x239cc;
+}
+static bool root_position_unround(uint32_t pc) {
+    pc &= 0x1fffffff;
+    return pc==0x22514 || pc==0x2253c || pc==0x2254c;
+}
 static bool camera_origin_fixed(uint32_t pc) { return false; }
 static TransformWord checked(TransformWord t,uint32_t raw) {
     return t.valid && t.raw==raw?t:transform_integer(raw);
