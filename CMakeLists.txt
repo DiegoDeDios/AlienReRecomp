@@ -84,6 +84,7 @@ set(RUNTIME_SRC
   src/runtime/widescreen.c
   src/runtime/automap.c
   src/runtime/native.c
+  src/runtime/slope_contact.c
   src/runtime/pgxp.c
   src/runtime/disc.c
   src/runtime/memcard.c
