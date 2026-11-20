@@ -50,6 +50,7 @@ typedef struct Settings {
     bool widescreen;
     int aspect_w, aspect_h;  /* widescreen aspect, e.g. 16:9 */
     int fov;                 /* horizontal field of view in degrees, 0 = original */
+    int view_distance;       /* fade-to-black distance, % of the game's (100 = original) */
     int internal_scale;      /* GPU internal resolution multiplier */
     bool pgxp;
     bool hd_textures;        /* texture pack: high resolution replacements */
@@ -86,6 +87,7 @@ void settings_default_bindings(Settings *s);
  * settings (software renderer: no widescreen), and the widest allowed. */
 double settings_fov_original(const Settings *s, bool software);
 #define SETTINGS_FOV_MAX 100
+#define SETTINGS_VIEW_DISTANCE_MAX 300
 bool settings_load(Settings *s, const char *path);
 bool settings_save(const Settings *s, const char *path);
 const char *settings_path(void);

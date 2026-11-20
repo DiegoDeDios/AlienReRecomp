@@ -167,6 +167,7 @@ Options override `config.ini` for one run; most are for testing.
 | `--skip-intro` | skip the boot loader and intro movies (same as `--exe ALIEN.BIN`) |
 | `--aspect W:H` | display aspect: `16:9` (default), `16:10`, `21:9`, or `4:3` for the original look |
 | `--fov DEG` | horizontal field of view in degrees, up to 100 (default `original`: 67 at 16:9, 53 at 4:3) |
+| `--view-distance PCT` | how far the 3D scene fades to black, in percent of the game's distance, up to 300 (default 100 = `original`) |
 | `--scale N` | internal resolution multiplier for the GPU renderer (default 4) |
 | `--cpu-speed PCT` | emulated CPU speed, raised automatically in busy scenes (default 300 = steady 60 fps; 100 = original hardware, never raised) |
 | `--no-vsync` | present without vsync (lowest latency, may tear) |

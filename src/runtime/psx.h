@@ -244,6 +244,9 @@ extern int g_fov_deg;      /* horizontal field of view on screen, degrees (0 = o
 #define FOV_MAX_DEG 100
 /* the game's own horizontal field of view for a widescreen scale (g_ws_k) */
 double fov_original_deg(double ws_k);
+/* how far the 3D scene fades to black, in percent of the game's own
+ * distance (100 = original); gte.c */
+extern int g_view_distance_pct;
 
 /* ---- platform (frontend) ---- */
 void platform_vblank(void);   /* present + input + pacing, called each vblank */
