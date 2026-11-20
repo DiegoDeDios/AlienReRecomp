@@ -86,6 +86,10 @@ void settings_default_bindings(Settings *s);
  * settings (software renderer: no widescreen), and the widest allowed. */
 double settings_fov_original(const Settings *s, bool software);
 #define SETTINGS_FOV_MAX 100
+#define MOUSE_SENS_MIN 0.01f
+#define MOUSE_SENS_MAX 30.0f
+#define MOUSE_SENS_DEFAULT 6.0f
+float settings_clamp_mouse_sensitivity(float value);
 bool settings_load(Settings *s, const char *path);
 bool settings_save(const Settings *s, const char *path);
 const char *settings_path(void);

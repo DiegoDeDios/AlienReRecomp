@@ -1,6 +1,7 @@
 #include "settings.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -285,6 +286,12 @@ static int action_by_id(const char *id) {
     return -1;
 }
 
+float settings_clamp_mouse_sensitivity(float value) {
+    if (!isfinite(value)) return MOUSE_SENS_DEFAULT;
+    return value < MOUSE_SENS_MIN ? MOUSE_SENS_MIN :
+           value > MOUSE_SENS_MAX ? MOUSE_SENS_MAX : value;
+}
+
 bool settings_load(Settings *s, const char *path) {
     FILE *f = fopen(path, "r");
     if (!f)
@@ -372,8 +379,7 @@ bool settings_load(Settings *s, const char *path) {
         }
     }
     fclose(f);
-    if (s->mouse_sens < 0.5f) s->mouse_sens = 0.5f;
-    if (s->mouse_sens > 30.0f) s->mouse_sens = 30.0f;
+    s->mouse_sens = settings_clamp_mouse_sensitivity(s->mouse_sens);
     return true;
 }
 
@@ -404,7 +410,7 @@ bool settings_save(const Settings *s, const char *path) {
     for (int g = 0; g < DMG_GROUP_COUNT; g++)
         fprintf(f, "%s = %d\n", g_enemy_groups[g].id, s->enemy_damage_group_pct[g]);
     fprintf(f, "\n");
-    fprintf(f, "[mouse]\nmouse_look = %s\nsensitivity = %.2f\n\n", tf[s->mouse_look],
+    fprintf(f, "[mouse]\nmouse_look = %s\nsensitivity = %.4f\n\n", tf[s->mouse_look],
             (double)s->mouse_sens);
     fprintf(f, "[camera]\nresponsive_sticks = %s\nstick_speed = %d\nstick_dead_zone = %d\n"
                "stick_curve = %s\n\n",
