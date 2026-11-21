@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "recomp.h"
+#include "region.h"
 
 #ifdef __cplusplus
 extern "C" {

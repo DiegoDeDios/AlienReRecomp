@@ -9,9 +9,9 @@
  * FINDINGS.md). Each room has a bounding box and a BSP of 8-byte nodes; a slice
  * through the BSP at one height gives the regions open at that height, and an
  * edge of one with solid behind it is a wall. */
-#define MAP_PTR        0x800A4758u
-#define PLAYER_PTR     0x800A49E8u
-#define DEMO_PLAYBACK  0x800A48C4u
+#define MAP_PTR        rg(0x800A4758u)
+#define PLAYER_PTR     rg(0x800A49E8u)
+#define DEMO_PLAYBACK  rg(0x800A48C4u)
 #define RAM_SIZE       0x200000u
 
 #define MAP_PLANES     16

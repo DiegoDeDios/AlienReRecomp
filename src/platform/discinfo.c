@@ -107,7 +107,8 @@ DiscStatus disc_check(const char *path, char *cue, size_t cue_n, char *msg, size
         return DISC_UNREADABLE;
     }
     cnf[size] = 0;
-    if (!strstr(cnf, "SLUS_006.33")) {
+    /* USA (SLUS-00633) or Europe (SLES-02913), runtime/region.c */
+    if (!region_from_cnf(cnf)) {
         char boot[64] = "?";
         const char *b = strstr(cnf, "cdrom:");
         if (b) {
@@ -120,10 +121,12 @@ DiscStatus disc_check(const char *path, char *cue, size_t cue_n, char *msg, size
             boot[i] = 0;
         }
         disc_close();
-        snprintf(msg, msg_n, "Unsupported disc (%s). This port needs Alien Resurrection (USA), SLUS-00633.",
+        snprintf(msg, msg_n,
+                 "Unsupported disc (%s). This port needs Alien Resurrection, USA (SLUS-00633) "
+                 "or Europe (SLES-02913).",
                  boot);
         return DISC_WRONG_GAME;
     }
-    snprintf(msg, msg_n, "Alien Resurrection (USA) - SLUS-00633");
+    snprintf(msg, msg_n, "%s", region_name());
     return DISC_OK;
 }
