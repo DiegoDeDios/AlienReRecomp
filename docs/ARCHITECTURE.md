@@ -239,6 +239,23 @@ wide angles (the game culls in screen space); a wider view only changes
 render-side data (ordering tables, packet buffers), not game logic, as far
 as tested.
 
+### View distance (`src/runtime/gte.c`)
+
+In game the world is lit with `DCPL` (depth cue colour light): each colour
+is faded to the far colour, black, by the GTE's depth cue factor IR0 =
+DQB + DQA·H/SZ, computed by `RTPS`/`RTPT`. With the game's values
+(DQA −4194, DQB 1.25 in 8.24, H 384) the fade starts near SZ 5000 and is
+complete near SZ 25000, about where the world renderer drops quads (depth
+key above 12288, SZ 24576). Enemies see further than that.
+
+The **View distance** setting (percent, 100 = original, up to 300)
+multiplies the H/SZ term of IR0 by its factor, so the fade starts and ends
+that many times further away. Only IR0 (and MAC0) change: the projection, the depth
+keys and the renderer's culling are the game's. Geometry the game still
+draws past the fade now shows; past the culling distance the scene ends.
+Above 300% that end showed in play (a door at the end of a corridor popped
+in), so the setting stops at 300%.
+
 ### Frame pacing and frame rate
 
 * Presentation uses vsync. When the display runs at ~60 Hz, frames are paced

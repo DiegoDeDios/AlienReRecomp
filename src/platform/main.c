@@ -595,6 +595,10 @@ static void apply_live(void) {
         g_fov_deg = c->fov;
         LOGI("overlay", "field of view %d", c->fov);
     }
+    if (c->view_distance != a->view_distance) {
+        g_view_distance_pct = c->view_distance;
+        LOGI("overlay", "view distance %d%%", c->view_distance);
+    }
     if (c->enemy_damage_pct != a->enemy_damage_pct ||
         memcmp(c->enemy_damage_group_pct, a->enemy_damage_group_pct,
                sizeof c->enemy_damage_group_pct)) {
@@ -1106,6 +1110,8 @@ static void parse_args(int argc, char **argv) {
                    "  --no-infinite-flashlight  the flashlight battery runs down as in the original\n"
                    "  --fov DEG       horizontal field of view in degrees, up to 100 (default:\n"
                    "                  original, 67 at 16:9 and 53 at 4:3)\n"
+                   "  --view-distance PCT  how far the 3D scene fades to black, in percent of\n"
+                   "                  the game's distance, up to 300 (default 100 = original)\n"
                    "  --enemy-damage PCT|GROUP=PCT  damage taken from enemies (default 100;\n"
                    "                  groups as in config.ini [enemy_damage]; repeatable)\n"
                    "  --mouse-sens N  mouse-look sensitivity (default 6)\n"
@@ -1216,6 +1222,14 @@ static void parse_args(int argc, char **argv) {
             if (g_cfg.fov < 0 || g_cfg.fov > SETTINGS_FOV_MAX) {
                 fprintf(stderr, "bad --fov %s (degrees up to %d, or original)\n", v,
                         SETTINGS_FOV_MAX);
+                exit(1);
+            }
+            i++;
+        } else if (!strcmp(a, "--view-distance") && v) {
+            g_cfg.view_distance = !strcmp(v, "original") ? 100 : atoi(v);
+            if (g_cfg.view_distance < 100 || g_cfg.view_distance > SETTINGS_VIEW_DISTANCE_MAX) {
+                fprintf(stderr, "bad --view-distance %s (percent from 100 to %d, or original)\n", v,
+                        SETTINGS_VIEW_DISTANCE_MAX);
                 exit(1);
             }
             i++;
@@ -1358,6 +1372,7 @@ static void apply_settings(const Settings *c) {
     g_sprint_pct = c->sprint ? c->sprint_pct : 100;
     g_infinite_flashlight = c->infinite_flashlight;
     g_fov_deg = c->fov;
+    g_view_distance_pct = c->view_distance;
     cpu_budget_configure(cycle_scale_for(c->cpu_pct));
     g_enemy_damage_pct = c->enemy_damage_pct;
     memcpy(g_enemy_damage_group_pct, c->enemy_damage_group_pct, sizeof g_enemy_damage_group_pct);

@@ -117,6 +117,7 @@ void settings_defaults(Settings *s) {
     s->widescreen = true;
     s->aspect_w = 16, s->aspect_h = 9;
     s->internal_scale = 4;
+    s->view_distance = 100;
     s->pgxp = true;
     s->hd_textures = true;
     s->vsync = true;
@@ -328,6 +329,8 @@ bool settings_load(Settings *s, const char *path) {
             else if (!strcmp(k, "fullscreen")) s->fullscreen = parse_bool(v);
             else if (!strcmp(k, "show_fps")) s->show_fps = parse_bool(v);
             else if (!strcmp(k, "fov")) s->fov = !strcmp(v, "original") ? 0 : clampi(atoi(v), 0, SETTINGS_FOV_MAX);
+            else if (!strcmp(k, "view_distance"))
+                s->view_distance = !strcmp(v, "original") ? 100 : clampi(atoi(v), 100, SETTINGS_VIEW_DISTANCE_MAX);
             else if (!strcmp(k, "gpu_driver") &&
                      (!strcmp(v, "auto") || !strcmp(v, "vulkan") || !strcmp(v, "direct3d12")))
                 snprintf(s->gpu_driver, sizeof s->gpu_driver, "%s", v);
@@ -394,10 +397,10 @@ bool settings_save(const Settings *s, const char *path) {
         snprintf(fov, sizeof fov, "%d", s->fov);
     else
         snprintf(fov, sizeof fov, "original");
-    fprintf(f, "[video]\nwidescreen = %s\naspect = %d:%d\nfov = %s\ninternal_scale = %d\n"
+    fprintf(f, "[video]\nwidescreen = %s\naspect = %d:%d\nfov = %s\nview_distance = %d\ninternal_scale = %d\n"
                "pgxp = %s\nhd_textures = %s\nvsync = %s\nsmooth = %s\nfullscreen = %s\nshow_fps = %s\n"
                "gpu_driver = %s\n\n",
-            tf[s->widescreen], s->aspect_w, s->aspect_h, fov, s->internal_scale,
+            tf[s->widescreen], s->aspect_w, s->aspect_h, fov, s->view_distance, s->internal_scale,
             tf[s->pgxp], tf[s->hd_textures], tf[s->vsync], tf[s->smooth], tf[s->fullscreen], tf[s->show_fps],
             s->gpu_driver);
     fprintf(f, "[gameplay]\nsprint = %s\nsprint_speed = %d\ninfinite_flashlight = %s\n"

@@ -10,6 +10,8 @@
 #include "pgxp.h"
 #include "widescreen.h"
 
+int g_view_distance_pct = 100;
+
 /* data register indices */
 enum {
     VXY0, VZ0, VXY1, VZ1, VXY2, VZ2, RGBC, OTZ, IR0, IR1, IR2, IR3, SXY0,
@@ -210,6 +212,14 @@ static void rtp(CPU *c, int v, int sf, int lm, int last) {
         pgxp_gte_push((float)hx, (float)hy, (float)zf, D[SXY2]);
     }
     if (last) {
+        /* depth cue factor IR0 = DQB + DQA * H / SZ. In game the scene is lit
+         * with DCPL, which fades each colour to the far colour (black) by IR0:
+         * the fade starts near SZ 5000 and is complete near SZ 25000. The view
+         * distance setting multiplies H / SZ by its factor here, as if the
+         * point were that many times nearer, pushing the fade further away;
+         * the projection itself is unchanged. */
+        if (g_view_distance_pct > 100)
+            q = (uint32_t)((uint64_t)q * (uint32_t)g_view_distance_pct / 100);
         int64_t dq = (int64_t)q * (int16_t)C[DQA] + (int32_t)C[DQB];
         set_mac0(c, dq);
         int64_t ir0 = dq >> 12;

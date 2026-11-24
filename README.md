@@ -107,6 +107,10 @@ mouse, the keyboard or a controller.
 * **Field of view** slider: the game's own view is fairly narrow (53°
   across the screen at 4:3, 67° with 16:9 widescreen); widen it up to 100°.
   The first-person weapon keeps its original framing.
+* **View distance** slider: the game fades the scene to black with
+  distance, so enemies can see and shoot you from the dark. Push the fade
+  up to 3 times further away (at 300% most of a long corridor shows);
+  Original keeps the game's own.
 
 ### High Resolution
 
@@ -384,7 +388,8 @@ at a station; memory card saves carry over.
 
 Yes: in **Settings** turn off Widescreen, Precision geometry, Responsive
 sticks, Sprint and Infinite flashlight, and set Internal resolution to 1x,
-Field of view to Original and Frame rate boost to Original (100%).
+Field of view and View distance to Original and Frame rate boost to
+Original (100%).
 
 #### Can I try changes before they are released?
 
