@@ -201,9 +201,18 @@ static void rtp(CPU *c, int v, int sf, int lm, int last) {
          * hardware result is garbage: very near the camera (its divider
          * overflows), far off-screen (SXY saturate) and at or behind the
          * eye (z <= 0), where the renderer clips the polygon instead. */
-        double zf = (double)z / 4096.0;
-        double xf = (double)x / (double)(1 << shift);
-        double yf = (double)y / (double)(1 << shift);
+        double precise[3];
+        double vector[3] = {transform_data(v*2,0,D[v*2]),
+                            transform_data(v*2,1,D[v*2]),
+                            transform_data(v*2+1,0,D[v*2+1])};
+        for (int row=0;row<3;row++) {
+            precise[row]=transform_ctrl32(TRX+row,C[TRX+row]);
+            for (int col=0;col<3;col++) {
+                int i=row*3+col;
+                precise[row]+=transform_ctrl(i/2,i&1,C[i/2])*vector[col]/4096.0;
+            }
+        }
+        double zf=precise[2],xf=precise[0],yf=precise[1];
         double hh = (double)(C[H] & 0xFFFF);
         double hx = (double)(int32_t)C[OFX] / 65536.0 * zf + xf * hh * g_ws_k;
         double hy = (double)(int32_t)C[OFY] / 65536.0 * zf + yf * hh;
@@ -231,8 +240,23 @@ static void rtp(CPU *c, int v, int sf, int lm, int last) {
 
 /* --- generic matrix * vector + translation ----------------------------- */
 static void mvmva_core(CPU *c, int mx, const int32_t vec[3], int cv, int sf,
-                       int lm) {
+                       int lm, int vector_index) {
     int shift = sf ? 12 : 0;
+    double precise[3]={0};
+    if(g_pgxp && mx==0 && cv!=2) {
+        /* MVMVA matrix composition reads the fractional IR vector too. */
+        double vin[3];
+        for(int j=0;j<3;j++) {
+            if(vector_index==3)vin[j]=transform_data(IR1+j,0,D[IR1+j]);
+            else if(vector_index>=0)vin[j]=transform_data(vector_index*2+(j==2),j==1,D[vector_index*2+(j==2)]);
+            else vin[j]=vec[j];
+        }
+        for(int row=0;row<3;row++) {
+            precise[row]=cv==0?transform_ctrl32(TRX+row,C[TRX+row])*4096.0:cv==1?(int32_t)C[RBK+row]*4096.0:0;
+            for(int col=0;col<3;col++) { int i=row*3+col;precise[row]+=transform_ctrl(i/2,i&1,C[i/2])*vin[col]; }
+            precise[row]/=(1<<shift);
+        }
+    }
     int32_t tr[3] = {0, 0, 0};
     if (cv == 0) {
         tr[0] = (int32_t)C[TRX]; tr[1] = (int32_t)C[TRY]; tr[2] = (int32_t)C[TRZ];
@@ -273,18 +297,23 @@ static void mvmva_core(CPU *c, int mx, const int32_t vec[3], int cv, int sf,
         D[MAC1 + i] = (uint32_t)(int32_t)(acc >> shift);
     }
     macs_to_irs(c, lm);
+    if(g_pgxp)
+        for(int i=0;i<3;i++) {
+            transform_result(IR1+i,mx==0 && cv!=2?precise[i]:(int16_t)D[IR1+i],D[IR1+i]);
+            transform_result32(MAC1+i,mx==0 && cv!=2?precise[i]:(int32_t)D[MAC1+i],D[MAC1+i]);
+        }
 }
 
 /* lighting helpers --------------------------------------------------- */
 static void light_matrix(CPU *c, int v, int sf, int lm) {
     /* IR = sat(L * V) */
     int32_t vec[3] = {VX(c, v), VY(c, v), VZ(c, v)};
-    mvmva_core(c, 1, vec, 3, sf, lm);
+    mvmva_core(c, 1, vec, 3, sf, lm,-1);
 }
 
 static void color_matrix_bk(CPU *c, int sf, int lm) {
     int32_t vec[3] = {(int16_t)D[IR1], (int16_t)D[IR2], (int16_t)D[IR3]};
-    mvmva_core(c, 2, vec, 1, sf, lm);
+    mvmva_core(c, 2, vec, 1, sf, lm,-1);
 }
 
 /* MAC = (RGB<<4) * IR, used by NCC/CC */
@@ -422,7 +451,7 @@ void gte_command(CPU *c, uint32_t cmd) {
             vec[1] = VY(c, v);
             vec[2] = VZ(c, v);
         }
-        mvmva_core(c, mx, vec, cv, sf, lm);
+        mvmva_core(c, mx, vec, cv, sf, lm,v);
         break;
     }
     case 0x13: ncd(c, 0, sf, lm); break;                        /* NCDS */
@@ -514,6 +543,12 @@ void gte_command(CPU *c, uint32_t cmd) {
         LOGW("gte", "unknown GTE command %07X", cmd);
         break;
     }
+    if (g_pgxp && (cmd&0x3f)!=0x12 && (cmd&0x3f)!=0x06 &&
+        (cmd&0x3f)!=0x2d && (cmd&0x3f)!=0x2e)
+        for(int i=0;i<3;i++) {
+            transform_result(IR1+i,(int16_t)D[IR1+i],D[IR1+i]);
+            transform_result32(MAC1+i,(int32_t)D[MAC1+i],D[MAC1+i]);
+        }
     if (C[FLAG] & 0x7F87E000u)
         C[FLAG] |= 0x80000000u;
 }

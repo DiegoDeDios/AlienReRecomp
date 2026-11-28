@@ -487,15 +487,22 @@ static void camera_mouse(uint32_t player) {
     }
 }
 
+static uint32_t g_player_camera_scope;
+static const float *g_camera_mouse_sample;
 void ALIEN_8005ECBC__orig(CPU *c);
 void ALIEN_8005ECBC(CPU *c) {
-    uint32_t obj = c->r[4];
-    if (obj && obj == mem_r32(PLAYER_OBJ_PTR) && mem_r32(DEMO_PLAYBACK) == 0) {
-        if (g_stick_direct)
-            camera_stick();
+    uint32_t obj=c->r[4],old_scope=g_player_camera_scope;
+    const float *old_sample=g_camera_mouse_sample;
+    float sample[2]={0};
+    g_player_camera_scope=0;
+    if(obj && obj==mem_r32(PLAYER_OBJ_PTR) && !mem_r32(DEMO_PLAYBACK)) {
+        if(g_stick_direct)camera_stick();
         camera_mouse(obj);
+        sample[0]=g_cam_mouse_x;sample[1]=g_cam_mouse_y;
+        g_camera_mouse_sample=sample;g_player_camera_scope=obj;
     }
     ALIEN_8005ECBC__orig(c);
+    g_player_camera_scope=old_scope;g_camera_mouse_sample=old_sample;
 }
 
 /* main (0x80020350). Option defaults live in the options block at
@@ -719,4 +726,34 @@ void ALIEN_80080FE4(CPU *c) {
     light_update_limited(c);
     if (every_other)
         mem_w32(FRAME_STEP, 1);
+}
+
+void ALIEN_80021954__orig(CPU *c);
+void ALIEN_80021954(CPU *c) {
+    uint32_t out=c->r[4];bool precise=g_pgxp;
+    double x=transform_gpr32(7,c->r[7]),y=transform_gpr32(6,c->r[6]),z=transform_gpr32(5,c->r[5]);
+    ALIEN_80021954__orig(c);
+    if(precise)transform_rotation(out,x,y,z,true);
+}
+
+void ALIEN_800831E4__orig(CPU *c);
+void ALIEN_800831E4(CPU *c) {
+    uint32_t in=c->r[4],out=c->r[5];bool precise=g_pgxp;
+    double x=transform_memory16(in),y=transform_memory16(in+2),z=transform_memory16(in+4);
+    ALIEN_800831E4__orig(c);
+    if(precise)transform_rotation(out,x,y,z,false);
+}
+
+/* The integer view/aim builder still owns gameplay. Retain only this input
+ * sample's fractional angle in its render shadow, before matrix construction. */
+void ALIEN_8006215C__orig(CPU *c);
+void ALIEN_8006215C(CPU *c) {
+    if(g_pgxp && g_player_camera_scope && g_camera_mouse_sample) {
+        double pitch=(int32_t)c->r[5];
+        double residual=g_camera_mouse_sample[1]*(mem_r8(OPTIONS+0x0E)?-1.0:1.0);
+        if((pitch>=600 && residual>0) || (pitch<=-600 && residual<0))residual=0;
+        transform_gpr_set(4,(int32_t)c->r[4]-g_camera_mouse_sample[0],c->r[4]);
+        transform_gpr_set(5,pitch+residual,c->r[5]);
+    }
+    ALIEN_8006215C__orig(c);
 }
