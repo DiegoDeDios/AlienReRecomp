@@ -98,6 +98,7 @@ set(RUNTIME_SRC
   src/hw/spu.c
   src/hw/sio.c
   src/hw/mdec.c
+  src/render/geometry_clip.c
   src/render/gpu_hw.c
   src/render/gpu_device.c
   src/render/texpack.c

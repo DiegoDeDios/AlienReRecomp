@@ -207,9 +207,9 @@ static void rtp(CPU *c, int v, int sf, int lm, int last) {
         double hh = (double)(C[H] & 0xFFFF);
         double hx = (double)(int32_t)C[OFX] / 65536.0 * zf + xf * hh * g_ws_k;
         double hy = (double)(int32_t)C[OFY] / 65536.0 * zf + yf * hh;
-        if (zf == 0.0) /* w = 0 means unknown: put it just behind the eye */
-            zf = -1.0 / 4096.0;
-        pgxp_gte_push((float)hx, (float)hy, (float)zf, D[SXY2]);
+        /* Screen/divider saturation is not a geometric invalidity. Only
+         * true 44-bit transform overflow prevents using this projection. */
+        pgxp_gte_push(hx,hy,zf,D[SXY2],!(c->gte.ctrl[31]&0x7E000000u));
     }
     if (last) {
         /* depth cue factor IR0 = DQB + DQA * H / SZ. In game the scene is lit

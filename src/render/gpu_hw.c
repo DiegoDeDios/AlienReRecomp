@@ -29,6 +29,7 @@
 #include "../runtime/psx.h"
 #include "../runtime/widescreen.h"
 #include "render.h"
+#include "geometry_clip.h"
 
 /* shaders: GLSL sources in shaders/, compiled for every backend by
  * tools/compile_shaders.py */
@@ -47,6 +48,7 @@ typedef struct {
 typedef struct {
     uint32_t first, count;
     int blend;      /* -1 none, 0..3 semi mode */
+    int depth;      /* 0 disabled, 1 opaque write, 2 translucent read */
     uint32_t pass;  /* 0 all, 1 opaque texels, 2 stp texels */
     int sx, sy, sw, sh; /* scissor in native pixels */
     int image;          /* replacement image + 1, 0 = game textures */
@@ -64,11 +66,13 @@ static struct {
     SDL_Window *win;
     RenderConfig cfg;
     int S;
-    SDL_GPUTexture *vram, *vram_read, *upload, *tmp, *offscreen;
+    SDL_GPUTexture *vram, *vram_read, *upload, *tmp, *offscreen, *depth;
+    uint64_t depth_frame;
+    bool depth_clear;
     int off_w, off_h;
     SDL_GPUBuffer *vbuf;
     SDL_GPUTransferBuffer *vtb, *tex_tb, *dl_tb;
-    SDL_GPUGraphicsPipeline *draw_pipe[5]; /* none, mode0..3 */
+    SDL_GPUGraphicsPipeline *draw_pipe[3][5]; /* none, mode0..3 */
     SDL_GPUGraphicsPipeline *blit_pipe;
     SDL_GPUGraphicsPipeline *disp_pipe, *disp_off_pipe;
     SDL_GPUSampler *nearest, *linear, *image_sampler;
@@ -150,7 +154,7 @@ static SDL_GPUColorTargetBlendState image_blend_state(void) {
 }
 
 static SDL_GPUGraphicsPipeline *make_draw_pipeline(SDL_GPUShader *vs, SDL_GPUShader *fs,
-                                                   SDL_GPUColorTargetBlendState blend) {
+                                                   SDL_GPUColorTargetBlendState blend,int depth) {
     SDL_GPUVertexBufferDescription vbd = {
         .slot = 0, .pitch = sizeof(HwVertex),
         .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX};
@@ -171,8 +175,11 @@ static SDL_GPUGraphicsPipeline *make_draw_pipeline(SDL_GPUShader *vs, SDL_GPUSha
         .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .rasterizer_state = {.fill_mode = SDL_GPU_FILLMODE_FILL,
                              .cull_mode = SDL_GPU_CULLMODE_NONE},
+        .depth_stencil_state = {.compare_op=SDL_GPU_COMPAREOP_GREATER_OR_EQUAL,
+            .enable_depth_test=depth!=0,.enable_depth_write=depth==1},
         .target_info = {.color_target_descriptions = &ctd,
-                        .num_color_targets = 1},
+                        .num_color_targets = 1,.has_depth_stencil_target=true,
+                        .depth_stencil_format=SDL_GPU_TEXTUREFORMAT_D32_FLOAT},
     };
     SDL_GPUGraphicsPipeline *p = SDL_CreateGPUGraphicsPipeline(H.dev, &ci);
     if (!p)
@@ -346,7 +353,12 @@ static void flush_draws(void) {
     SDL_GPUColorTargetInfo ct = {.texture = H.vram,
                                  .load_op = SDL_GPU_LOADOP_LOAD,
                                  .store_op = SDL_GPU_STOREOP_STORE};
-    SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(H.cmd, &ct, 1, NULL);
+    SDL_GPUDepthStencilTargetInfo dt={.texture=H.depth,.clear_depth=0,
+        .load_op=H.depth_clear?SDL_GPU_LOADOP_CLEAR:SDL_GPU_LOADOP_LOAD,
+        .store_op=SDL_GPU_STOREOP_STORE,.stencil_load_op=SDL_GPU_LOADOP_DONT_CARE,
+        .stencil_store_op=SDL_GPU_STOREOP_DONT_CARE};
+    SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(H.cmd, &ct, 1, &dt);
+    H.depth_clear=false;
     SDL_GPUBufferBinding vb = {H.vbuf, at};
     SDL_BindGPUVertexBuffers(rp, 0, &vb, 1);
     SDL_GPUTextureSamplerBinding ts = {H.vram_read, H.nearest};
@@ -355,7 +367,7 @@ static void flush_draws(void) {
     SDL_PushGPUVertexUniformData(H.cmd, 0, vuni, sizeof vuni);
     SDL_GPUViewport vp = {0, 0, 1024.0f * H.S, 512.0f * H.S, 0, 1};
     SDL_SetGPUViewport(rp, &vp);
-    int cur_blend = -2;
+    int cur_blend = -2,cur_depth=-1;
     uint32_t cur_pass = 99;
     for (uint32_t i = 0; i < H.ndraws; i++) {
         DrawCmd *d = &H.draws[i];
@@ -367,11 +379,11 @@ static void flush_draws(void) {
             SDL_SetGPUScissor(rp, &isc);
             SDL_DrawGPUPrimitives(rp, d->count, 1, d->first, 0);
             SDL_BindGPUFragmentSamplers(rp, 0, &ts, 1);
-            cur_blend = -2;
+            cur_blend = -2;cur_depth=-1;
             continue;
         }
-        if (d->blend != cur_blend) {
-            SDL_BindGPUGraphicsPipeline(rp, H.draw_pipe[d->blend + 1]);
+        if (d->blend != cur_blend || d->depth != cur_depth) {
+            SDL_BindGPUGraphicsPipeline(rp, H.draw_pipe[d->depth][d->blend + 1]);
             if (d->blend == 0) {
                 SDL_FColor k = {0.5f, 0.5f, 0.5f, 0.5f};
                 SDL_SetGPUBlendConstants(rp, k);
@@ -379,7 +391,7 @@ static void flush_draws(void) {
                 SDL_FColor k = {0.25f, 0.25f, 0.25f, 0.25f};
                 SDL_SetGPUBlendConstants(rp, k);
             }
-            cur_blend = d->blend;
+            cur_blend = d->blend;cur_depth=d->depth;
         }
         if (d->pass != cur_pass) {
             uint32_t funi[4];
@@ -445,7 +457,7 @@ static void before_textured(const GpuState *s, uint16_t tpage, uint16_t clut,
         refresh_read();
 }
 
-static void push_draw(int blend, uint32_t pass, uint32_t first, uint32_t count,
+static void push_draw(int blend, uint32_t pass, uint32_t first, uint32_t count,int depth,
                       const GpuState *s) {
     int sx = s->area_x1, sy = s->area_y1;
     int sw = s->area_x2 - s->area_x1 + 1, sh = s->area_y2 - s->area_y1 + 1;
@@ -453,7 +465,7 @@ static void push_draw(int blend, uint32_t pass, uint32_t first, uint32_t count,
         return;
     if (H.ndraws) {
         DrawCmd *l = &H.draws[H.ndraws - 1];
-        if (!l->image && l->blend == blend && l->pass == pass && l->sx == sx && l->sy == sy &&
+        if (!l->image && l->depth==depth && l->blend == blend && l->pass == pass && l->sx == sx && l->sy == sy &&
             l->sw == sw && l->sh == sh && l->first + l->count == first) {
             l->count += count;
             return;
@@ -461,7 +473,7 @@ static void push_draw(int blend, uint32_t pass, uint32_t first, uint32_t count,
     }
     if (H.ndraws >= MAX_DRAWS)
         flush_draws();
-    H.draws[H.ndraws++] = (DrawCmd){first, count, blend, pass, sx, sy, sw, sh, 0};
+    H.draws[H.ndraws++] = (DrawCmd){.first=first,.count=count,.blend=blend,.depth=depth,.pass=pass,.sx=sx,.sy=sy,.sw=sw,.sh=sh,.image=0};
 }
 
 static uint32_t make_info0(uint16_t tpage, uint32_t flags, const GpuState *s) {
@@ -482,6 +494,10 @@ static uint32_t texwin(const GpuState *s) {
  * semi-transparency passes. */
 static void emit(const HwVertex *v, int n, uint32_t flags, uint16_t tpage,
                  const GpuState *s) {
+    if(H.depth_frame!=g_gpu_frame_counter) {
+        flush_draws();H.depth_frame=g_gpu_frame_counter;H.depth_clear=true;
+    }
+    int depth=v[0].info[3]?1:0;
     if (H.nverts + (uint32_t)n * 2 > MAX_VERTS)
         flush_draws();
     /* bounding box; clipped near-camera geometry can lie far outside VRAM */
@@ -503,12 +519,12 @@ static void emit(const HwVertex *v, int n, uint32_t flags, uint16_t tpage,
     H.nverts += (uint32_t)n;
     int mode = (tpage >> 5) & 3;
     if (!(flags & PRIM_SEMI)) {
-        push_draw(-1, 0, first, (uint32_t)n, s);
+        push_draw(-1, 0, first, (uint32_t)n, depth, s);
     } else if (flags & PRIM_TEXTURED) {
-        push_draw(-1, 1, first, (uint32_t)n, s);
-        push_draw(mode, 2, first, (uint32_t)n, s);
+        push_draw(-1, 1, first, (uint32_t)n, depth, s);
+        push_draw(mode, 2, first, (uint32_t)n, depth?2:0, s);
     } else {
-        push_draw(mode, 0, first, (uint32_t)n, s);
+        push_draw(mode, 0, first, (uint32_t)n, depth?2:0, s);
     }
     mark_dirty(x1, y1, x2, y2);
 }
@@ -557,44 +573,7 @@ static inline int span_limit_x(uint32_t flags) {
 /* PGXP: perspective depth for the vertex shader (any positive scale
  * works; keep w around 1..256) */
 static inline float persp_w(float depth) {
-    return depth * (1.0f / 64.0f) + 0.001f;
-}
-
-/* A vertex of a triangle being clipped: homogeneous position and the
- * attributes, all of which vary linearly in 3D. */
-typedef struct {
-    float x, y, w;
-    float u, v, r, g, b;
-} ClipVtx;
-
-static ClipVtx clip_lerp(const ClipVtx *a, const ClipVtx *b, float t) {
-    ClipVtx o;
-    o.x = a->x + (b->x - a->x) * t;
-    o.y = a->y + (b->y - a->y) * t;
-    o.w = a->w + (b->w - a->w) * t;
-    o.u = a->u + (b->u - a->u) * t;
-    o.v = a->v + (b->v - a->v) * t;
-    o.r = a->r + (b->r - a->r) * t;
-    o.g = a->g + (b->g - a->g) * t;
-    o.b = a->b + (b->b - a->b) * t;
-    return o;
-}
-
-/* Sutherland-Hodgman against the near plane w = PGXP_NEAR: a triangle
- * becomes nothing, a triangle or a quad. */
-static int clip_near(const ClipVtx in[3], ClipVtx out[4]) {
-    int n = 0;
-    for (int i = 0; i < 3; i++) {
-        const ClipVtx *a = &in[i], *b = &in[(i + 1) % 3];
-        bool ain = a->w >= PGXP_NEAR, bin = b->w >= PGXP_NEAR;
-        if (ain)
-            out[n++] = *a;
-        if (ain != bin) {
-            out[n] = clip_lerp(a, b, (PGXP_NEAR - a->w) / (b->w - a->w));
-            out[n++].w = PGXP_NEAR;
-        }
-    }
-    return n;
+    return depth * (1.0f / 64.0f);
 }
 
 static inline uint8_t clip_color(float c) {
@@ -611,25 +590,26 @@ static void hw_triangle_clipped(const GpuState *s, const GVtx v[3],
                                 uint32_t flags, uint16_t clut, uint16_t tpage,
                                 uint32_t info0, uint32_t tw) {
     bool shaded = flags & PRIM_SHADED;
-    ClipVtx in[3], out[4];
+    GeometryVertex in[3],out[GEOMETRY_CLIP_CAPACITY];
     for (int i = 0; i < 3; i++) {
         const GVtx *c = shaded ? &v[i] : &v[0];
-        in[i] = (ClipVtx){v[i].hx, v[i].hy, v[i].hw, (float)v[i].u, (float)v[i].v,
+        in[i] = (GeometryVertex){v[i].hx, v[i].hy, v[i].hw, (float)v[i].u, (float)v[i].v,
                           (float)c->r, (float)c->g, (float)c->b};
     }
-    int n = clip_near(in, out);
+    int n=geometry_clip_triangle(in,s->area_x1-1.0,s->area_y1-1.0,
+                                 s->area_x2+2.0,s->area_y2+2.0,out);
     if (n < 3)
         return;
-    HwVertex hv[6];
+    HwVertex hv[(GEOMETRY_CLIP_CAPACITY-2)*3];
     int m = 0;
     for (int k = 1; k + 1 < n; k++) {
         const int idx[3] = {0, k, k + 1};
         for (int j = 0; j < 3; j++) {
-            const ClipVtx *c = &out[idx[j]];
+            const GeometryVertex *c = &out[idx[j]];
             HwVertex *o = &hv[m++];
-            o->x = c->x / c->w + 0.5f;
-            o->y = c->y / c->w + 0.5f;
-            o->w = persp_w(c->w);
+            o->x = c->hx / c->z + 0.5f;
+            o->y = c->hy / c->z + 0.5f;
+            o->w = persp_w(c->z);
             o->r = clip_color(c->r);
             o->g = clip_color(c->g);
             o->b = clip_color(c->b);
@@ -639,7 +619,7 @@ static void hw_triangle_clipped(const GpuState *s, const GVtx v[3],
             o->info[0] = info0;
             o->info[1] = clut;
             o->info[2] = tw;
-            o->info[3] = 0;
+            o->info[3] = v[0].space==1 && v[1].space==1 && v[2].space==1;
         }
     }
     emit(hv, m, flags, tpage, s);
@@ -676,7 +656,7 @@ static void hw_triangle(const GpuState *s, const GVtx v[3], uint32_t flags,
     }
     uint32_t info0 = make_info0(tpage, flags, s);
     uint32_t tw = texwin(s);
-    if (all_tracked && !all_precise) {
+    if (all_tracked) {
         hw_triangle_clipped(s, v, flags, clut, tpage, info0, tw);
         return;
     }
@@ -982,7 +962,7 @@ static void hw_image_quad(const GpuState *s, int image, const float xy[8], const
                                          .r = rgba[0], .g = rgba[1], .b = rgba[2], .a = rgba[3],
                                          .u = uv[k * 2], .v = uv[k * 2 + 1], .w = 1.0f};
     }
-    H.draws[H.ndraws++] = (DrawCmd){first, 6, -1, 0, s->area_x1, s->area_y1, sw, sh, image + 1};
+    H.draws[H.ndraws++] = (DrawCmd){.first=first,.count=6,.blend=-1,.depth=0,.pass=0,.sx=s->area_x1,.sy=s->area_y1,.sw=sw,.sh=sh,.image=image+1};
     mark_dirty(s->area_x1, s->area_y1, s->area_x2, s->area_y2);
 }
 
@@ -1312,6 +1292,11 @@ bool render_init(SDL_Window *win, const RenderConfig *cfg) {
     H.vram = make_texture(W, Ht, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
     H.vram_read = make_texture(W, Ht, SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET);
     H.tmp = make_texture(W, Ht, SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET);
+    SDL_GPUTextureCreateInfo di={.type=SDL_GPU_TEXTURETYPE_2D,
+        .format=SDL_GPU_TEXTUREFORMAT_D32_FLOAT,.usage=SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+        .width=(Uint32)W,.height=(Uint32)Ht,.layer_count_or_depth=1,.num_levels=1};
+    H.depth=SDL_CreateGPUTexture(H.dev,&di);if(!H.depth)fatal("world depth: %s",SDL_GetError());
+    H.depth_clear=true;
     H.upload = make_texture(1024, 512, SDL_GPU_TEXTUREUSAGE_SAMPLER);
 
     SDL_GPUBufferCreateInfo bci = {.usage = SDL_GPU_BUFFERUSAGE_VERTEX, .size = VTB_SIZE};
@@ -1342,11 +1327,12 @@ bool render_init(SDL_Window *win, const RenderConfig *cfg) {
 
     SDL_GPUShader *vs = make_shader(&k_draw_vert, SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
     SDL_GPUShader *fs = make_shader(&k_draw_frag, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
-    for (int m = -1; m < 4; m++)
-        H.draw_pipe[m + 1] = make_draw_pipeline(vs, fs, blend_state(m));
+    for(int depth=0;depth<3;depth++)
+      for (int m = -1; m < 4; m++)
+        H.draw_pipe[depth][m + 1] = make_draw_pipeline(vs, fs, blend_state(m),depth);
     SDL_ReleaseGPUShader(H.dev, fs);
     fs = make_shader(&k_hd_frag, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 0);
-    H.image_pipe = make_draw_pipeline(vs, fs, image_blend_state());
+    H.image_pipe = make_draw_pipeline(vs, fs, image_blend_state(),0);
     SDL_ReleaseGPUShader(H.dev, vs);
     SDL_ReleaseGPUShader(H.dev, fs);
     H.blit_pipe = make_blit_pipeline();
