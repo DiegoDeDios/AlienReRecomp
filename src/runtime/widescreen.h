@@ -15,6 +15,8 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
+bool ws_script_message_scene(const uint8_t *ram, size_t size);
 
 extern bool g_ws_enabled;
 extern float g_ws_aspect;   /* display aspect, e.g. 16/9 */

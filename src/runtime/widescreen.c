@@ -113,8 +113,32 @@ bool ws_projected(int32_t x, int32_t y) {
  * at 30 fps or lower, so single frames without drawing are normal) */
 #define WS_HOLD_FRAMES 12
 
+static uint32_t ram_word(const uint8_t *ram,unsigned at) {
+    uint32_t value;memcpy(&value,ram+at,4);return value;
+}
+static uint16_t ram_half(const uint8_t *ram,unsigned at) {
+    uint16_t value;memcpy(&value,ram+at,2);return value;
+}
+
+/* USA script command 103 opens a blocking message over the existing scene.
+ * Its text/dialog waits can outlast WS_HOLD_FRAMES without a new projection.
+ * Identify the live VM invocation, not a remembered last opcode or a host
+ * timer. The context and command cursor are already part of guest saves. */
+bool ws_script_message_scene(const uint8_t *ram,size_t size) {
+    if(!ram || size<0xA8836u || ram_half(ram,0xA8834)!=103 ||
+       ram_word(ram,0x976C0)!=0x00047EFCu ||
+       ram_word(ram,0x47F40)!=0x0C00B721u ||
+       ram_word(ram,0x47F48)!=0x0C00B6C3u ||
+       ram_word(ram,0x4095C)!=0x0040F809u)return false;
+    uint32_t context=ram_word(ram,0xA882C)&0x1fffffffu;
+    uint32_t command=ram_word(ram,0xA8824)&0x1fffffffu;
+    if(context<4 || command<4 || context>size-108 || command>size-2)return false;
+    return (ram_half(ram,command)&0x0fffu)==103 &&
+      (ram_word(ram,context+88)&0x1fffffffu)==command+2;
+}
+
 void ws_new_frame(void) {
-    if (g_ws_3d_count)
+    if (g_ws_3d_count || ws_script_message_scene(g_ram, sizeof g_ram))
         g_idle = 0;
     else if (g_idle < WS_HOLD_FRAMES)
         g_idle++;
