@@ -29,6 +29,7 @@
 #include "../runtime/psx.h"
 #include "../runtime/widescreen.h"
 #include "render.h"
+#include "geometry_clip.h"
 
 /* shaders: GLSL sources in shaders/, compiled for every backend by
  * tools/compile_shaders.py */
@@ -560,43 +561,6 @@ static inline float persp_w(float depth) {
     return depth * (1.0f / 64.0f) + 0.001f;
 }
 
-/* A vertex of a triangle being clipped: homogeneous position and the
- * attributes, all of which vary linearly in 3D. */
-typedef struct {
-    float x, y, w;
-    float u, v, r, g, b;
-} ClipVtx;
-
-static ClipVtx clip_lerp(const ClipVtx *a, const ClipVtx *b, float t) {
-    ClipVtx o;
-    o.x = a->x + (b->x - a->x) * t;
-    o.y = a->y + (b->y - a->y) * t;
-    o.w = a->w + (b->w - a->w) * t;
-    o.u = a->u + (b->u - a->u) * t;
-    o.v = a->v + (b->v - a->v) * t;
-    o.r = a->r + (b->r - a->r) * t;
-    o.g = a->g + (b->g - a->g) * t;
-    o.b = a->b + (b->b - a->b) * t;
-    return o;
-}
-
-/* Sutherland-Hodgman against the near plane w = PGXP_NEAR: a triangle
- * becomes nothing, a triangle or a quad. */
-static int clip_near(const ClipVtx in[3], ClipVtx out[4]) {
-    int n = 0;
-    for (int i = 0; i < 3; i++) {
-        const ClipVtx *a = &in[i], *b = &in[(i + 1) % 3];
-        bool ain = a->w >= PGXP_NEAR, bin = b->w >= PGXP_NEAR;
-        if (ain)
-            out[n++] = *a;
-        if (ain != bin) {
-            out[n] = clip_lerp(a, b, (PGXP_NEAR - a->w) / (b->w - a->w));
-            out[n++].w = PGXP_NEAR;
-        }
-    }
-    return n;
-}
-
 static inline uint8_t clip_color(float c) {
     return (uint8_t)(c < 0.0f ? 0 : c > 255.0f ? 255 : (int)(c + 0.5f));
 }
@@ -611,25 +575,26 @@ static void hw_triangle_clipped(const GpuState *s, const GVtx v[3],
                                 uint32_t flags, uint16_t clut, uint16_t tpage,
                                 uint32_t info0, uint32_t tw) {
     bool shaded = flags & PRIM_SHADED;
-    ClipVtx in[3], out[4];
+    GeometryVertex in[3],out[GEOMETRY_CLIP_CAPACITY];
     for (int i = 0; i < 3; i++) {
         const GVtx *c = shaded ? &v[i] : &v[0];
-        in[i] = (ClipVtx){v[i].hx, v[i].hy, v[i].hw, (float)v[i].u, (float)v[i].v,
+        in[i] = (GeometryVertex){v[i].hx, v[i].hy, v[i].hw, (float)v[i].u, (float)v[i].v,
                           (float)c->r, (float)c->g, (float)c->b};
     }
-    int n = clip_near(in, out);
+    int n=geometry_clip_triangle(in,s->area_x1-1.0,s->area_y1-1.0,
+                                 s->area_x2+2.0,s->area_y2+2.0,out);
     if (n < 3)
         return;
-    HwVertex hv[6];
+    HwVertex hv[(GEOMETRY_CLIP_CAPACITY-2)*3];
     int m = 0;
     for (int k = 1; k + 1 < n; k++) {
         const int idx[3] = {0, k, k + 1};
         for (int j = 0; j < 3; j++) {
-            const ClipVtx *c = &out[idx[j]];
+            const GeometryVertex *c = &out[idx[j]];
             HwVertex *o = &hv[m++];
-            o->x = c->x / c->w + 0.5f;
-            o->y = c->y / c->w + 0.5f;
-            o->w = persp_w(c->w);
+            o->x = c->hx / c->z + 0.5f;
+            o->y = c->hy / c->z + 0.5f;
+            o->w = persp_w(c->z);
             o->r = clip_color(c->r);
             o->g = clip_color(c->g);
             o->b = clip_color(c->b);
@@ -676,7 +641,7 @@ static void hw_triangle(const GpuState *s, const GVtx v[3], uint32_t flags,
     }
     uint32_t info0 = make_info0(tpage, flags, s);
     uint32_t tw = texwin(s);
-    if (all_tracked && !all_precise) {
+    if (all_tracked) {
         hw_triangle_clipped(s, v, flags, clut, tpage, info0, tw);
         return;
     }
