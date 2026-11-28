@@ -14,6 +14,7 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
+#include "transform.h"
 
 typedef struct PgxpVtx {
     /* homogeneous screen position: the vertex projects to (x / w, y / w),
@@ -66,3 +67,10 @@ void pgxp_lwc2(int rd, uint32_t addr);
 void pgxp_lw(int rt, uint32_t addr);
 void pgxp_sw(uint32_t addr, int rt);
 void pgxp_mov(int rd, int rs);
+
+typedef struct PgxpRegisters {
+    PgxpVtx gte[3],gpr[32];
+    TransformRegisters transform;
+} PgxpRegisters;
+void pgxp_registers_save(PgxpRegisters *p);
+void pgxp_registers_restore(const PgxpRegisters *p);
