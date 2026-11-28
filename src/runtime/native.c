@@ -6,6 +6,8 @@
 #include <stdlib.h>
 
 #include "camera.h"
+#include "locomotion.h"
+bool g_locomotion_unclamp;
 #include "enemy_damage.h"
 #include "pgxp.h"
 #include "psx.h"
@@ -719,4 +721,21 @@ void ALIEN_80080FE4(CPU *c) {
     light_update_limited(c);
     if (every_other)
         mem_w32(FRAME_STEP, 1);
+}
+
+/* The original gait already follows actual movement speed, but its animation
+ * sampler caps that rate at 2047. Sprint reaches this cap and footsteps and
+ * camera motion stop accelerating. Remove it only for the locomotion update;
+ * the native animation events still drive the original footsteps and bob. */
+void ALIEN_8004FA08__orig(CPU *c);
+void interp_call(CPU *c, uint32_t addr);
+void ALIEN_8004FA08(CPU *c) {
+    bool old=g_locomotion_unclamp;
+    uint32_t obj=c->r[5];
+    g_locomotion_unclamp=obj && obj==mem_r32(PLAYER_OBJ_PTR) &&
+        !mem_r32(DEMO_PLAYBACK) && !mem_r8(obj+0x171) &&
+        (c->r[31]&0x1FFFFFFFu)==0x00060644u && (int16_t)mem_r16(obj+0x15A)>2047;
+    if(g_locomotion_unclamp) interp_call(c,0x8004FA08u);
+    else ALIEN_8004FA08__orig(c);
+    g_locomotion_unclamp=old;
 }
