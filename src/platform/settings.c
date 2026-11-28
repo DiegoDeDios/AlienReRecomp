@@ -173,7 +173,23 @@ const char *bind_key_name(int code, char *buf, size_t n) {
     return buf;
 }
 
+static const char *bind_key_id(int code,char *buf,size_t n) {
+    if(code>0 && code<SDL_SCANCODE_COUNT)snprintf(buf,n,"scancode:%d",code);
+    else bind_key_name(code,buf,n);
+    return buf;
+}
+
 static int key_from_name(const char *name) {
+    /* Preserve physical keys independently of SDL's localized names. */
+    if (!SDL_strncasecmp(name, "scancode:", 9)) {
+        char *end;
+        long code = strtol(name + 9, &end, 10);
+        return *end == 0 && code > 0 && code < SDL_SCANCODE_COUNT ? (int)code : 0;
+    }
+    if (!SDL_strcasecmp(name, "Application")) return SDL_SCANCODE_APPLICATION;
+#ifdef _WIN32
+    if (!SDL_strcasecmp(name, "Menu")) return SDL_SCANCODE_APPLICATION;
+#endif
     for (int i = 1; i <= 5; i++)
         if (!SDL_strcasecmp(name, g_mouse_names[i]))
             return BIND_MOUSE + i;
@@ -422,7 +438,7 @@ bool settings_save(const Settings *s, const char *path) {
     char name[64];
     for (int a = 0; a < ACT_COUNT; a++)
         for (int k = 0; k < KEY_SLOTS; k++) {
-            const char *n = bind_key_name(s->key[a][k], name, sizeof name);
+            const char *n = bind_key_id(s->key[a][k], name, sizeof name);
             fprintf(f, "%s%s = %s\n", g_actions[a].id, k ? ".2" : "", *n ? n : "none");
         }
     fprintf(f, "\n[controller]\n");
