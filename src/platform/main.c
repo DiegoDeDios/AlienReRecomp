@@ -82,6 +82,7 @@ static struct {
 static SDL_Window *g_win;
 static bool g_gpu_ok;
 static SDL_AudioStream *g_audio;
+static bool audio_priming = true;
 static SDL_Gamepad *g_pad;
 static uint64_t g_next_frame_ns;
 static uint64_t g_frame_end_ns; /* when the last frame was presented and paced */
@@ -146,6 +147,11 @@ void platform_state_done(bool save, bool ok, const char *message) {
 static float g_mouse_dx, g_mouse_dy;
 
 void platform_state_loaded(void) {
+    audio_priming = true;
+    if (g_audio) {
+        SDL_PauseAudioStreamDevice(g_audio);
+        SDL_SetAudioStreamFrequencyRatio(g_audio, 1.0f);
+    }
     /* sound queued from before the load, the pacing clock and mouse motion
      * belong to the old moment */
     if (g_audio)
@@ -422,6 +428,16 @@ static void wav_close(void) {
     }
 }
 
+#define AUDIO_TARGET_BYTES (44100 * 4 * 60 / 1000)
+static void audio_resume(void) {
+    if (!g_audio) return;
+    if (audio_priming) {
+        if (SDL_GetAudioStreamQueued(g_audio) < AUDIO_TARGET_BYTES) return;
+        audio_priming = false;
+    }
+    SDL_ResumeAudioStreamDevice(g_audio);
+}
+
 void platform_audio_push(const int16_t *stereo, int frames) {
     if (g_wav) {
         fwrite(stereo, 4, (size_t)frames, g_wav);
@@ -433,6 +449,7 @@ void platform_audio_push(const int16_t *stereo, int frames) {
     if (SDL_GetAudioStreamQueued(g_audio) > 44100 * 4 * 15 / 100)
         return;
     SDL_PutAudioStreamData(g_audio, stereo, frames * 4);
+    if (audio_priming) audio_resume();
 }
 
 /* Keep the audio queue near a target latency by nudging the playback rate.
@@ -441,7 +458,7 @@ void platform_audio_push(const int16_t *stereo, int frames) {
 static void audio_rate_control(void) {
     if (!g_audio)
         return;
-    const float target = 44100.0f * 4.0f * 0.06f; /* ~60 ms */
+    const float target = AUDIO_TARGET_BYTES; /* ~60 ms */
     float queued = (float)SDL_GetAudioStreamQueued(g_audio);
     float ratio = 1.0f + (queued - target) / target * 0.01f;
     if (ratio < 0.98f) ratio = 0.98f;
@@ -882,7 +899,7 @@ static void run_overlay(void) {
         quick_request(result == OVERLAY_QUICK_LOAD);
     LOGI("overlay", "resumed");
     if (g_audio)
-        SDL_ResumeAudioStreamDevice(g_audio);
+        audio_resume();
     if (was_captured) {
         g_mouse_captured = true;
         SDL_SetWindowRelativeMouseMode(g_win, true);
@@ -1501,7 +1518,7 @@ int main(int argc, char **argv) {
         g_audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
                                             &spec, NULL, NULL);
         if (g_audio)
-            SDL_ResumeAudioStreamDevice(g_audio);
+            audio_resume();
         else
             LOGW("main", "no audio: %s", SDL_GetError());
         /* a controller that was already connected sends no "added" event */
