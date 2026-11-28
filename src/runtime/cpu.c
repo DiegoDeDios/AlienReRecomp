@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "psx.h"
+#include "pgxp.h"
 #include "savestate.h"
 
 CPU *g_cpu;
@@ -360,6 +361,8 @@ int cpu_exception_depth(void) { return g_exc_depth; }
 
 void cpu_take_interrupt(CPU *c) {
     LOGD("irq", "take interrupt istat=%03X imask=%03X pc~%08X", g_istat, g_imask, c->pc);
+    PgxpRegisters saved_precision;
+    pgxp_registers_save(&saved_precision);
     uint32_t saved_r[32];
     uint32_t saved_hi = c->hi, saved_lo = c->lo, saved_pc = c->pc;
     memcpy(saved_r, c->r, sizeof saved_r);
@@ -387,6 +390,7 @@ void cpu_take_interrupt(CPU *c) {
     g_ov_depth = ov_depth;
 
     memcpy(c->r, saved_r, sizeof saved_r);
+    pgxp_registers_restore(&saved_precision);
     c->hi = saved_hi;
     c->lo = saved_lo;
     c->pc = saved_pc;
